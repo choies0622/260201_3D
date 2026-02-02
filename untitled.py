@@ -83,8 +83,7 @@ def project_perspective(p: Vec3, f: float, cx: float, cy: float) -> tuple[float,
     - u = cx + f * (x / z)
     - v = cy - f * (y / z)
     """
-    # Avoid division by zero or negative z (behind camera)
-    z = p.z if p.z != 0 else 1e-6
+    z = p.z if p.z != 0 else 1e-6   # Avoid division by zero or negative z (behind camera)
     u = cx + f * (p.x / z)
     v = cy - f * (p.y / z)
     return (u, v)
