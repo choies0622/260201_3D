@@ -1,5 +1,5 @@
 # #1 : 3D Modeling in CS class
-\>>> By. **Eun-Sung Choi**, David C.  
+\>>> By. **Eun-Sung Choi**(David C.)  
 Proj. Started On `Feb 2, 2026`.  
 
 ---

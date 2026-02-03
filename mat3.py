@@ -3,8 +3,10 @@ from dataclasses import dataclass
 import math as m
 from cmu_graphics import cmu_graphics as c
 
-CMU_RUN = False
+CMU_RUN = True
+f = 0.8
 
+### define vector(1x3), matrix(3x3)
 @dataclass(frozen=True)
 class Vec3:
     x: float
@@ -51,6 +53,8 @@ class Mat3:
         return NotImplemented
 
 
+### ROTATION
+# theta must be RAD
 def Rx(theta: float) -> Mat3:
     c, s = m.cos(theta), m.sin(theta)
     return Mat3((
@@ -78,39 +82,54 @@ def Rz(theta: float) -> Mat3:
     ))
 
 
-def project_perspective(p: Vec3, f: float, cx: float, cy: float) -> tuple[float, float]:
-    """
-    Perspective projection.
-    - camera looks along +z and p.z must be > 0.
-    - u = cx + f * (x / z)
-    - v = cy - f * (y / z)
-    """
+def projectToScreen(p: Vec3, cam: tuple[float, float]) -> tuple[float, float]:
+    # camera looks along +z and p.z must be > 0
+    # u = cx + f * (x / z)
+    # v = cy - f * (y / z)
+    cx, cy = cam
     z = p.z if p.z != 0 else 1e-6   # Avoid division by zero or negative z (behind camera)
     u = cx + f * (p.x / z)
     v = cy - f * (p.y / z)
     return (u, v)
 
+def rotateVerts(verts: list[Vec3], thetas: tuple[float, float, float]) -> list[Vec3]:
+    thetaX, thetaY, thetaZ = thetas
+    R = Rz(thetaZ) @ Ry(thetaY) @ Rx(thetaX) # Order matters
+    return [R @ v for v in verts]
 
-def make_cube(size: float) -> tuple[list[Vec3], list[tuple[int, int]]]:
-    """
-    Cube centered at origin, side length = size.
-    Returns:
-    - vertices: 8 points
-    - edges: 12 pairs of vertex indices
-    """
-    s = size / 2.0
+
+def Cuboid(cord: Vec3, size: tuple[float, float, float]) -> tuple[list[Vec3]]:
+    w, h, d = size
+    w /= 2.0; h /= 2.0; d /= 2.0; 
     verts = [
-        Vec3(-s, -s, -s), Vec3(+s, -s, -s),
-        Vec3(+s, +s, -s), Vec3(-s, +s, -s),
-        Vec3(-s, -s, +s), Vec3(+s, -s, +s),
-        Vec3(+s, +s, +s), Vec3(-s, +s, +s),
+        Vec3(-w, -h, -d), Vec3(+w, -h, -d),
+        Vec3(+w, +h, -d), Vec3(-w, +h, -d),
+        Vec3(-w, -h, +d), Vec3(+w, -h, +d),
+        Vec3(+w, +h, +d), Vec3(-w, +h, +d)
     ]
-    edges = [
-        (0, 1), (1, 2), (2, 3), (3, 0),  # back face
-        (4, 5), (5, 6), (6, 7), (7, 4),  # front face
-        (0, 4), (1, 5), (2, 6), (3, 7),  # connections
-    ]
-    return verts, edges
+    verts = [v + cord for v in verts]
+    # edges = [
+    #     (0, 1), (1, 2), (2, 3), (3, 0), # back face
+    #     (4, 5), (5, 6), (6, 7), (7, 4), # front face
+    #     (0, 4), (1, 5), (2, 6), (3, 7)  # connecting edges
+    # ]
+
+    #### WORK ON IT ####
+    projectToScreen()
+
+    # c.Polygon(verts[0].0, y1, x2, y2, x3, y3, …, fill='black', border=None, borderWidth=2, opacity=100, rotateAngle=0, dashes=False, visible=True)
+
+    return verts
+
+
+def Cube(cord: Vec3, size: float) -> tuple[list[Vec3], list[tuple[int, int]]]:
+    return Cuboid(cord, (size, size, size))
+
+
+
+
+
+
 
 
 
