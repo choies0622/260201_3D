@@ -1,7 +1,9 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import math as m
+from cmu_graphics import cmu_graphics as c
 
+CMU_RUN = False
 
 @dataclass(frozen=True)
 class Vec3:
@@ -109,3 +111,10 @@ def make_cube(size: float) -> tuple[list[Vec3], list[tuple[int, int]]]:
         (0, 4), (1, 5), (2, 6), (3, 7),  # connections
     ]
     return verts, edges
+
+
+
+
+
+if CMU_RUN:
+    c.run()
