@@ -1,10 +1,15 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import math as m
-from cmu_graphics import cmu_graphics as c
+from cmu_graphics import *  # general
+from cmu_graphics import cmu_graphics as c  # c.run()
+
+app.background = 'black'
 
 CMU_RUN = True
-f = 0.8
+f = 250
+cam = (200, 200)
+
 
 ### define vector(1x3), matrix(3x3)
 @dataclass(frozen=True)
@@ -82,25 +87,57 @@ def Rz(theta: float) -> Mat3:
     ))
 
 
-def projectToScreen(p: Vec3, cam: tuple[float, float]) -> tuple[float, float]:
-    # camera looks along +z and p.z must be > 0
-    # u = cx + f * (x / z)
-    # v = cy - f * (y / z)
-    cx, cy = cam
-    z = p.z if p.z != 0 else 1e-6   # Avoid division by zero or negative z (behind camera)
-    u = cx + f * (p.x / z)
-    v = cy - f * (p.y / z)
-    return (u, v)
-
 def rotateVerts(verts: list[Vec3], thetas: tuple[float, float, float]) -> list[Vec3]:
     thetaX, thetaY, thetaZ = thetas
-    R = Rz(thetaZ) @ Ry(thetaY) @ Rx(thetaX) # Order matters
+    R = Rz(thetaZ) @ Ry(thetaY) @ Rx(thetaX)    # Order matters
     return [R @ v for v in verts]
 
 
-def Cuboid(cord: Vec3, size: tuple[float, float, float]) -> tuple[list[Vec3]]:
+def projectToScreen(p: Vec3, cam: tuple[float, float]) -> tuple[float, float] | None:
+    # camera looks along +z and p.z must be > 0
+    # u = cx + f * (x / z)
+    # v = cy - f * (y / z)
+    if p.z <= 0:
+        return None  # Behind camera or at camera plane
+    cx, cy = cam
+    u = cx + f * (p.x / p.z)
+    v = cy - f * (p.y / p.z)
+    return (u, v)
+
+
+def drawAxis():
+    axisVerts = [
+        Vec3(-200, 0, 250), Vec3(+200, 0, 250), # x-axis
+        Vec3(0, -200, 250), Vec3(0, +200, 250), # y-axis
+        Vec3(0, 0, 1e-6), Vec3(0, 0, 1e+6)  # z-axis
+    ]
+    print(axisVerts)
+    projectedAxisVerts = [projectToScreen(something, cam) for something in axisVerts]
+    print(projectedAxisVerts)
+    axis = Group(
+        Line(
+            projectedAxisVerts[0][0], projectedAxisVerts[0][1],
+            projectedAxisVerts[1][0], projectedAxisVerts[1][1],
+            fill = 'red', dashes = True, arrowEnd = True, opacity = 50
+        ),
+        Line(
+            projectedAxisVerts[2][0], projectedAxisVerts[2][1],
+            projectedAxisVerts[3][0], projectedAxisVerts[3][1],
+            fill = 'green', dashes = True, arrowEnd = True, opacity = 50
+        ),
+        Line(
+            projectedAxisVerts[4][0], projectedAxisVerts[4][1],
+            projectedAxisVerts[5][0], projectedAxisVerts[5][1] - 1,
+            fill = 'blue', dashes = True, arrowEnd = True, opacity = 50
+        )
+    )
+
+def Cuboid(cord: Vec3, size: tuple[float, float, float], cam: tuple[float, float] = None):
+    if cam is None:
+        cam = globals()['cam']
+
     w, h, d = size
-    w /= 2.0; h /= 2.0; d /= 2.0; 
+    w = w / 2.0; h = h / 2.0; d = d / 2.0; 
     verts = [
         Vec3(-w, -h, -d), Vec3(+w, -h, -d),
         Vec3(+w, +h, -d), Vec3(-w, +h, -d),
@@ -108,27 +145,93 @@ def Cuboid(cord: Vec3, size: tuple[float, float, float]) -> tuple[list[Vec3]]:
         Vec3(+w, +h, +d), Vec3(-w, +h, +d)
     ]
     verts = [v + cord for v in verts]
-    # edges = [
-    #     (0, 1), (1, 2), (2, 3), (3, 0), # back face
-    #     (4, 5), (5, 6), (6, 7), (7, 4), # front face
-    #     (0, 4), (1, 5), (2, 6), (3, 7)  # connecting edges
-    # ]
+    
+    p = [projectToScreen(v, cam) for v in verts]
+    
+    # Ignore vert beyond cam
+    if any(coord is None for coord in p):
+        return
+    
+    try:
+        cuboidGroup = Group(
+            # Front face (vertices 4, 5, 6, 7)
+            Polygon(p[4][0], p[4][1],
+                    p[5][0], p[5][1],
+                    p[6][0], p[6][1],
+                    p[7][0], p[7][1],
+                    fill='lightblue', border='black', borderWidth=1, opacity=50),
+            # Back face (vertices 0, 1, 2, 3)
+            Polygon(p[0][0], p[0][1],
+                    p[1][0], p[1][1],
+                    p[2][0], p[2][1],
+                    p[3][0], p[3][1],
+                    fill='lightblue', border='black', borderWidth=1, opacity=50),
+            # Top face (vertices 3, 2, 6, 7)
+            Polygon(p[3][0], p[3][1],
+                    p[2][0], p[2][1],
+                    p[6][0], p[6][1],
+                    p[7][0], p[7][1],
+                    fill='lightgreen', border='black', borderWidth=1, opacity=50),
+            # Bottom face (vertices 0, 1, 5, 4)
+            Polygon(p[0][0], p[0][1],
+                    p[1][0], p[1][1],
+                    p[5][0], p[5][1],
+                    p[4][0], p[4][1],
+                    fill='lightgreen', border='black', borderWidth=1, opacity=50),
+            # Right face (vertices 1, 2, 6, 5)
+            Polygon(p[1][0], p[1][1],
+                    p[2][0], p[2][1],
+                    p[6][0], p[6][1],
+                    p[5][0], p[5][1],
+                    fill='lightyellow', border='black', borderWidth=1, opacity=50),
+            # Left face (vertices 0, 3, 7, 4)
+            Polygon(p[0][0], p[0][1],
+                    p[3][0], p[3][1],
+                    p[7][0], p[7][1],
+                    p[4][0], p[4][1],
+                    fill='lightyellow', border='black', borderWidth=1, opacity=50)
+        )
+    except: pass
+    return cuboidGroup
 
-    #### WORK ON IT ####
-    projectToScreen()
 
-    # c.Polygon(verts[0].0, y1, x2, y2, x3, y3, …, fill='black', border=None, borderWidth=2, opacity=100, rotateAngle=0, dashes=False, visible=True)
-
-    return verts
+# def Cube(cord: Vec3, size: float, cam: tuple[float, float] = None):
+#     Cuboid(cord, (size, size, size), cam)
+#     return cord, size, cam
 
 
-def Cube(cord: Vec3, size: float) -> tuple[list[Vec3], list[tuple[int, int]]]:
-    return Cuboid(cord, (size, size, size))
+x = -50
+y = -50
+z = 150
+size = 50.0
+
+# a = Cuboid(Vec3(x, y, z), (size, size, size))
+
+# print(a, type(a))
 
 
 
+def onKeyHold(keys):
+    global x, y, z, size
 
-
+    if ('a' in keys):
+        x += -10
+        # a.cord += Vec3(-10, 0, 0)
+    elif ('d' in keys):
+        x += 10
+        # a.cord += Vec3(+10, 0, 0)
+    elif ('w' in keys):
+        y += 10
+    elif ('s' in keys):
+        y += -10
+    elif ('z' in keys):
+        z += -10
+    elif ('x' in keys):
+        z += 10
+    
+    Rect(-200, -200, 800, 800, fill='white', border=None)
+    drawAxis()
+    Cuboid(Vec3(x, y, z), (size, size, size))
 
 
 
