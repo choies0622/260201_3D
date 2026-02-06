@@ -4,10 +4,8 @@ import math as m
 from cmu_graphics import *  # general
 from cmu_graphics import cmu_graphics as c  # c.run()
 
+app.background = 'white'
 
-bg = Rect(-200, -200, 800, 800, fill='white', border=None)
-
-SHOW_AXIS = True
 CMU_RUN = True
 f = 250
 cam = (200, 200)
@@ -107,19 +105,15 @@ def projectToScreen(p: Vec3, cam: tuple[float, float]) -> tuple[float, float] | 
     return (u, v)
 
 
-### OBJECT
-
 def drawAxis():
-    if not SHOW_AXIS:
-        return None
-    
     axisVerts = [
         Vec3(-200, 0, 250), Vec3(+200, 0, 250), # x-axis
         Vec3(0, -200, 250), Vec3(0, +200, 250), # y-axis
-        Vec3(0, 0, 1e-6),   Vec3(0, 0, 1e+6)    # z-axis
+        Vec3(0, 0, 1e-6), Vec3(0, 0, 1e+6)  # z-axis
     ]
+    # print(axisVerts)
     projectedAxisVerts = [projectToScreen(something, cam) for something in axisVerts]
-
+    # print(projectedAxisVerts)
     axis = Group(
         Line(
             projectedAxisVerts[0][0], projectedAxisVerts[0][1],
@@ -137,7 +131,6 @@ def drawAxis():
             fill = 'blue', dashes = True, arrowEnd = True, opacity = 50
         )
     )
-    return axis
 
 def Cuboid(cord: Vec3, size: tuple[float, float, float], cam: tuple[float, float] = None):
     if cam is None:
@@ -157,7 +150,7 @@ def Cuboid(cord: Vec3, size: tuple[float, float, float], cam: tuple[float, float
     
     # Ignore vert beyond cam
     if any(coord is None for coord in p):
-        return None
+        return
     
     try:
         cuboidGroup = Group(
@@ -198,9 +191,50 @@ def Cuboid(cord: Vec3, size: tuple[float, float, float], cam: tuple[float, float
                     p[4][0], p[4][1],
                     fill='lightyellow', border='black', borderWidth=1, opacity=50)
         )
-    except: 
-        return None
+    except: pass
     return cuboidGroup
+
+
+# def Cube(cord: Vec3, size: float, cam: tuple[float, float] = None):
+#     Cuboid(cord, (size, size, size), cam)
+#     return cord, size, cam
+
+
+x = -50
+y = -50
+z = 150
+size = 50.0
+
+# a = Cuboid(Vec3(x, y, z), (size, size, size))
+
+# print(a, type(a))
+
+
+
+def onKeyHold(keys):
+    global x, y, z, size
+
+    if ('a' in keys):
+        x += -10
+        # a.cord += Vec3(-10, 0, 0)
+    elif ('d' in keys):
+        x += 10
+        # a.cord += Vec3(+10, 0, 0)
+    elif ('w' in keys):
+        y += 10
+    elif ('s' in keys):
+        y += -10
+    elif ('z' in keys):
+        z += -10
+    elif ('x' in keys):
+        z += 10
+    
+    Rect(-200, -200, 800, 800, fill='white', border=None)
+    drawAxis()
+    Cuboid(Vec3(x, y, z), (size, size, size))
+
+
+
 
 
 
