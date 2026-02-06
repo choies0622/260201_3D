@@ -13,7 +13,7 @@ f = 250
 cam = (200, 200)
 
 
-### define vector(1x3), matrix(3x3)
+### DEFINE vector(1x3), matrix(3x3)
 @dataclass(frozen=True)
 class Vec3:
     x: float
@@ -108,7 +108,6 @@ def projectToScreen(p: Vec3, cam: tuple[float, float]) -> tuple[float, float] | 
 
 
 ### OBJECT
-
 def drawAxis():
     if not SHOW_AXIS:
         return None
@@ -160,47 +159,57 @@ def Cuboid(cord: Vec3, size: tuple[float, float, float], cam: tuple[float, float
         return None
     
     try:
+        # Front face (vertices 4, 5, 6, 7)
+        front_face = Polygon(p[4][0], p[4][1],
+                p[5][0], p[5][1],
+                p[6][0], p[6][1],
+                p[7][0], p[7][1],
+                fill='lightblue', border='black', borderWidth=1, opacity=50)
+        # Back face (vertices 0, 1, 2, 3)
+        back_face = Polygon(p[0][0], p[0][1],
+                p[1][0], p[1][1],
+                p[2][0], p[2][1],
+                p[3][0], p[3][1],
+                fill='lightblue', border='black', borderWidth=1, opacity=50)
+        # Top face (vertices 3, 2, 6, 7)
+        top_face = Polygon(p[3][0], p[3][1],
+                p[2][0], p[2][1],
+                p[6][0], p[6][1],
+                p[7][0], p[7][1],
+                fill='lightgreen', border='black', borderWidth=1, opacity=50)
+        # Bottom face (vertices 0, 1, 5, 4)
+        bottom_face = Polygon(p[0][0], p[0][1],
+                p[1][0], p[1][1],
+                p[5][0], p[5][1],
+                p[4][0], p[4][1],
+                fill='lightgreen', border='black', borderWidth=1, opacity=50)
+        # Right face (vertices 1, 2, 6, 5)
+        right_face = Polygon(p[1][0], p[1][1],
+                p[2][0], p[2][1],
+                p[6][0], p[6][1],
+                p[5][0], p[5][1],
+                fill='lightyellow', border='black', borderWidth=1, opacity=50)
+        # Left face (vertices 0, 3, 7, 4)
+        left_face = Polygon(p[0][0], p[0][1],
+                p[3][0], p[3][1],
+                p[7][0], p[7][1],
+                p[4][0], p[4][1],
+                fill='lightyellow', border='black', borderWidth=1, opacity=50)
+    
         cuboidGroup = Group(
-            # Front face (vertices 4, 5, 6, 7)
-            Polygon(p[4][0], p[4][1],
-                    p[5][0], p[5][1],
-                    p[6][0], p[6][1],
-                    p[7][0], p[7][1],
-                    fill='lightblue', border='black', borderWidth=1, opacity=50),
-            # Back face (vertices 0, 1, 2, 3)
-            Polygon(p[0][0], p[0][1],
-                    p[1][0], p[1][1],
-                    p[2][0], p[2][1],
-                    p[3][0], p[3][1],
-                    fill='lightblue', border='black', borderWidth=1, opacity=50),
-            # Top face (vertices 3, 2, 6, 7)
-            Polygon(p[3][0], p[3][1],
-                    p[2][0], p[2][1],
-                    p[6][0], p[6][1],
-                    p[7][0], p[7][1],
-                    fill='lightgreen', border='black', borderWidth=1, opacity=50),
-            # Bottom face (vertices 0, 1, 5, 4)
-            Polygon(p[0][0], p[0][1],
-                    p[1][0], p[1][1],
-                    p[5][0], p[5][1],
-                    p[4][0], p[4][1],
-                    fill='lightgreen', border='black', borderWidth=1, opacity=50),
-            # Right face (vertices 1, 2, 6, 5)
-            Polygon(p[1][0], p[1][1],
-                    p[2][0], p[2][1],
-                    p[6][0], p[6][1],
-                    p[5][0], p[5][1],
-                    fill='lightyellow', border='black', borderWidth=1, opacity=50),
-            # Left face (vertices 0, 3, 7, 4)
-            Polygon(p[0][0], p[0][1],
-                    p[3][0], p[3][1],
-                    p[7][0], p[7][1],
-                    p[4][0], p[4][1],
-                    fill='lightyellow', border='black', borderWidth=1, opacity=50)
+            front_face,
+            back_face,
+            top_face,
+            bottom_face,
+            right_face,
+            left_face
         )
     except: 
         return None
     return cuboidGroup
+
+
+##### NEXT: graphics group management #####
 
 
 
