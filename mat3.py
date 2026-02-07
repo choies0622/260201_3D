@@ -108,6 +108,7 @@ def projectToScreen(p: Vec3, cam: tuple[float, float]) -> tuple[float, float] | 
 
 
 ### OBJECT
+# Axis
 def drawAxis():
     if not SHOW_AXIS:
         return None
@@ -138,7 +139,8 @@ def drawAxis():
     )
     return axis
 
-def Cuboid(cord: Vec3, size: tuple[float, float, float], cam: tuple[float, float] = None):
+# Cuboid
+def _cuboid_faces(cord: Vec3, size: tuple[float, float, float], cam: tuple[float, float]) -> list[Polygon] | None:
     if cam is None:
         cam = globals()['cam']
 
@@ -196,18 +198,62 @@ def Cuboid(cord: Vec3, size: tuple[float, float, float], cam: tuple[float, float
                 p[4][0], p[4][1],
                 fill='lightyellow', border='black', borderWidth=1, opacity=50)
     
-        cuboidGroup = Group(
+        return [
             front_face,
             back_face,
             top_face,
             bottom_face,
             right_face,
-            left_face
-        )
-    except: 
+            left_face,
+        ]
+    except:
         return None
-    return cuboidGroup
 
+
+def CuboidGroup(cord: Vec3, size: tuple[float, float, float], cam: tuple[float, float] = None):
+    faces = _cuboid_faces(cord, size, cam)
+    if faces is None:
+        return None
+    return Group(*faces)
+
+
+class Cuboid:
+    def __init__(self, cord: Vec3, size: tuple[float, float, float], cam: tuple[float, float] | None = None):
+        if cam is None:
+            cam = globals()['cam']
+        self.cord = cord
+        self.size = size
+        self.cam = cam
+        self.group = Group()
+        self.redraw()
+
+    def redraw(self):
+        faces = _cuboid_faces(self.cord, self.size, self.cam)
+        self.group.clear()
+        if faces is None:
+            self.group.visible = False
+            return self.group
+        self.group.visible = True
+        for face in faces:
+            self.group.add(face)
+        return self.group
+
+    def move(self, delta: Vec3):
+        self.cord = self.cord + delta
+        return self.redraw()
+
+    def set_cord(self, cord: Vec3):
+        self.cord = cord
+        return self.redraw()
+
+    def set_size(self, size: tuple[float, float, float]):
+        self.size = size
+        return self.redraw()
+
+
+a = Cuboid(Vec3(0, 0, 200), (50, 50, 50))
+a.move(Vec3(100, 0, 0))
+a.set_size((70, 50, 50))
 
 ##### NEXT: graphics group management #####
 
