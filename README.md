@@ -2,8 +2,17 @@
 \>>> By. **Eun-Sung Choi**(David C.)  
 Proj. Started On `Feb 2, 2026`.  
 
----
-> *something will be updated below here*
+
+## TO DO
++ [ ] Multi Object Friendly Design
++ [ ] Graphics Group Management
++ [ ] Keyboard Binding & Interface
+    + [ ] ` Tab ` Object Select
+    + [ ] ``` ` ``` Visible toggle
+    + [ ] ` r ` Reset Position & Size & Rotation
++ Depth & Layer
++ Rotation
+
 
 ## About CMU Graphics Library
 *Find more info from [CMU Graphics Docs](https://academy.cs.cmu.edu/docs)*
