@@ -7,8 +7,8 @@ from cmu_graphics import cmu_graphics as c  # c.run()
 
 bg = Rect(-200, -200, 800, 800, fill='white', border=None)
 
-SHOW_AXIS = True
 CMU_RUN = True
+SHOW_AXIS = True
 f = 250
 cam = (200, 200)
 
@@ -121,13 +121,10 @@ def clearObjects(name: str):
     if obj is not None:
         if isinstance(obj, Group):
             obj.clear()
-            obj.visible = False
         else:
             group = getattr(obj, 'group', None)
             if group is not None and hasattr(group, 'clear'):
                 group.clear()
-                if hasattr(group, 'visible'):
-                    group.visible = False
             elif hasattr(obj, 'visible'):
                 obj.visible = False
     if _selected_index >= len(_objects):
@@ -259,7 +256,7 @@ def _cuboid_faces(
             right_face,
             left_face,
         ]
-    except:
+    except: 
         return None
 
 
@@ -278,7 +275,7 @@ class Cuboid:
         self.size = size
         self._initial_size = size
         self.rotation = rotation if rotation is not None else Vec3(0, 0, 0)
-        self._initial_rotation = rotation if rotation is not None else Vec3(0, 0, 0)
+        self._initial_rotation = self.rotation
         self.cam = cam
         self.group = Group()
         self.redraw()
@@ -324,7 +321,7 @@ class Cuboid:
         self.size = self._initial_size
         return self.redraw()
 
-    # Rotation (radians)
+    # Rotation (rad)
     def set_rotation(self, rotation: Vec3):
         self.rotation = rotation
         return self.redraw()
@@ -346,10 +343,12 @@ class Cuboid:
 
 class SelectedObjectInfo:
     def __init__(self, x: float, y: float):
+        self.base_x = x
+        self.base_y = y
         self.label_selected = Label(
             'SELECTED NAME',
-            x, y + 5,
-            fill='black', align='left', bold=True,
+            x, y,
+            fill='black', align='left-top', bold=True,
             size=15,
             opacity=80,
         )
@@ -370,7 +369,7 @@ class SelectedObjectInfo:
         )
         self.label_position_y = Label(
             'Y',
-            x + 65, y + 20,
+            x + 70, y + 20,
             fill='green', align='left', bold=True,
             size=10,
             font='monospace',
@@ -378,7 +377,7 @@ class SelectedObjectInfo:
         )
         self.label_position_z = Label(
             'Z',
-            x + 80, y + 20,
+            x + 90, y + 20,
             fill='blue', align='left', bold=True,
             size=10,
             font='monospace',
@@ -401,7 +400,7 @@ class SelectedObjectInfo:
         )
         self.label_size_h = Label(
             'H',
-            x + 65, y + 33,
+            x + 70, y + 33,
             fill='green', align='left', bold=True,
             size=10,
             font='monospace',
@@ -409,7 +408,7 @@ class SelectedObjectInfo:
         )
         self.label_size_d = Label(
             'D',
-            x + 80, y + 33,
+            x + 90, y + 33,
             fill='blue', align='left', bold=True,
             size=10,
             font='monospace',
@@ -432,7 +431,7 @@ class SelectedObjectInfo:
         )
         self.label_rotation_ry = Label(
             'RY',
-            x + 65, y + 46,
+            x + 70, y + 46,
             fill='green', align='left', bold=True,
             size=10,
             font='monospace',
@@ -440,7 +439,7 @@ class SelectedObjectInfo:
         )
         self.label_rotation_rz = Label(
             'RZ',
-            x + 80, y + 46,
+            x + 90, y + 46,
             fill='blue', align='left', bold=True,
             size=10,
             font='monospace',
@@ -461,12 +460,17 @@ class SelectedObjectInfo:
             self.label_rotation_ry,
             self.label_rotation_rz,
         )
-        # self.update()
+        self.update()
+
+    def _anchor_label_selected(self):
+        self.label_selected.left = self.base_x
+        self.label_selected.top = self.base_y
 
     def update(self):
         obj = get_selected_object()
         name = get_selected_object_name()
         self.label_selected.value = str(name)
+        self._anchor_label_selected()
         if obj is None:
             self.label_position_x.value = '-'
             self.label_position_y.value = '-'
@@ -494,9 +498,11 @@ class SelectedObjectInfo:
 drawAxis()
 cuboid1 = Cuboid(Vec3(0, 0, 200), Vec3(50, 50, 50))
 cuboid2 = Cuboid(Vec3(0, 0, 200), Vec3(50, 50, 50))
+cuboid_which_is_named_very_long = Cuboid(Vec3(0, 0, 200), Vec3(50, 50, 50))
 
 register_object(cuboid1, 'cuboid1')
 register_object(cuboid2, 'cuboid2')
+register_object(cuboid_which_is_named_very_long, 'cuboid_which_is_named_very_long')
 
 selected_object_info = SelectedObjectInfo(2, 2)
 
@@ -508,6 +514,7 @@ def onKeyHold(keys):
     if selected_group is None:
         return
     updated = False
+
     # Translation
     dx = (-5 if 'a' in keys else 0) + (+5 if 'd' in keys else 0)
     dy = (+5 if 'w' in keys else 0) + (-5 if 's' in keys else 0)
@@ -516,6 +523,7 @@ def onKeyHold(keys):
         if hasattr(selected_group, 'move'):
             selected_group.move(Vec3(dx, dy, dz))
             updated = True
+    
     # Scale
     dw = (-5 if 'A' in keys else 0) + (+5 if 'D' in keys else 0)
     dh = (+5 if 'W' in keys else 0) + (-5 if 'S' in keys else 0)
@@ -524,15 +532,16 @@ def onKeyHold(keys):
         if hasattr(selected_group, 'scale'):
             selected_group.scale(Vec3(dw, dh, dd))
             updated = True
+    
     # Rotation
-    pi = m.pi
-    drx = (pi/180.0) * ((+5 if 'Q' in keys else 0) + (-5 if 'E' in keys else 0))
-    dry = (pi/180.0) * ((+5 if 'R' in keys else 0) + (-5 if 'F' in keys else 0))
-    drz = (pi/180.0) * ((+5 if 'C' in keys else 0) + (-5 if 'V' in keys else 0))
+    drx = (m.pi/180.0) * ((+5 if 'Q' in keys else 0) + (-5 if 'E' in keys else 0))
+    dry = (m.pi/180.0) * ((+5 if 'R' in keys else 0) + (-5 if 'F' in keys else 0))
+    drz = (m.pi/180.0) * ((+5 if 'C' in keys else 0) + (-5 if 'V' in keys else 0))
     if drx or dry or drz:
         if hasattr(selected_group, 'rotate'):
             selected_group.rotate(Vec3(drx, dry, drz))
             updated = True
+    
     if updated:
         selected_object_info.update()
 
@@ -541,8 +550,7 @@ def onKeyPress(keys):
         select_next_object()
         selected_object_info.update()
     
-
-    if 'r' in keys:
+    if 'R' in keys:
         selected_group = get_selected_object()
         if selected_group is None:
             return
@@ -554,11 +562,6 @@ def onKeyPress(keys):
             selected_group.reset_rotation()
         selected_object_info.update()
 
-
-
-def onKeyRelease(keys):
-    if 'escape' in keys:
-        c.quit()
 
 if CMU_RUN:
     c.run()
