@@ -201,7 +201,7 @@ def _cuboid_faces(
         Vec3(+w, +h, +d), Vec3(-w, +h, +d)
     ]
     if rotation is not None and rotation != Vec3(0, 0, 0):
-        verts = rotateVerts(verts, (rotation.x, rotation.y, rotation.z))
+        verts = rotateVerts(verts, rotation)
     verts = [v + cord for v in verts]
     
     p = [projectToScreen(v, cam) for v in verts]
@@ -369,7 +369,7 @@ class SelectedObjectInfo:
         )
         self.label_position_y = Label(
             'Y',
-            x + 70, y + 20,
+            x + 50, y + 30,
             fill='green', align='left', bold=True,
             size=10,
             font='monospace',
@@ -377,7 +377,7 @@ class SelectedObjectInfo:
         )
         self.label_position_z = Label(
             'Z',
-            x + 90, y + 20,
+            x + 50, y + 40,
             fill='blue', align='left', bold=True,
             size=10,
             font='monospace',
@@ -385,14 +385,14 @@ class SelectedObjectInfo:
         )
         self.label_size_header = Label(
             'Size: ',
-            x, y + 33,
+            x, y + 60,
             fill='black', align='left',
             size=10,
             opacity=80,
         )
         self.label_size_w = Label(
             'W',
-            x + 50, y + 33,
+            x + 50, y + 60,
             fill='red', align='left', bold=True,
             size=10,
             font='monospace',
@@ -400,7 +400,7 @@ class SelectedObjectInfo:
         )
         self.label_size_h = Label(
             'H',
-            x + 70, y + 33,
+            x + 50, y + 70,
             fill='green', align='left', bold=True,
             size=10,
             font='monospace',
@@ -408,7 +408,7 @@ class SelectedObjectInfo:
         )
         self.label_size_d = Label(
             'D',
-            x + 90, y + 33,
+            x + 50, y + 80,
             fill='blue', align='left', bold=True,
             size=10,
             font='monospace',
@@ -416,14 +416,14 @@ class SelectedObjectInfo:
         )
         self.label_rotation_header = Label(
             'Rotation: ',
-            x, y + 46,
+            x, y + 100,
             fill='black', align='left',
             size=10,
             opacity=80,
         )
         self.label_rotation_rx = Label(
             'RX',
-            x + 50, y + 46,
+            x + 50, y + 100,
             fill='red', align='left', bold=True,
             size=10,
             font='monospace',
@@ -431,7 +431,7 @@ class SelectedObjectInfo:
         )
         self.label_rotation_ry = Label(
             'RY',
-            x + 70, y + 46,
+            x + 50, y + 110,
             fill='green', align='left', bold=True,
             size=10,
             font='monospace',
@@ -439,7 +439,7 @@ class SelectedObjectInfo:
         )
         self.label_rotation_rz = Label(
             'RZ',
-            x + 90, y + 46,
+            x + 50, y + 120,
             fill='blue', align='left', bold=True,
             size=10,
             font='monospace',
@@ -497,12 +497,12 @@ class SelectedObjectInfo:
 
 drawAxis()
 cuboid1 = Cuboid(Vec3(0, 0, 200), Vec3(50, 50, 50))
-cuboid2 = Cuboid(Vec3(0, 0, 200), Vec3(50, 50, 50))
-cuboid_which_is_named_very_long = Cuboid(Vec3(0, 0, 200), Vec3(50, 50, 50))
+# cuboid2 = Cuboid(Vec3(0, 0, 200), Vec3(50, 50, 50))
+# cuboid_which_is_named_very_long = Cuboid(Vec3(0, 0, 200), Vec3(50, 50, 50))
 
 register_object(cuboid1, 'cuboid1')
-register_object(cuboid2, 'cuboid2')
-register_object(cuboid_which_is_named_very_long, 'cuboid_which_is_named_very_long')
+# register_object(cuboid2, 'cuboid2')
+# register_object(cuboid_which_is_named_very_long, 'cuboid_which_is_named_very_long')
 
 selected_object_info = SelectedObjectInfo(2, 2)
 
@@ -550,7 +550,7 @@ def onKeyPress(keys):
         select_next_object()
         selected_object_info.update()
     
-    if 'R' in keys:
+    if 'r' in keys:
         selected_group = get_selected_object()
         if selected_group is None:
             return
