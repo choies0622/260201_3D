@@ -26,7 +26,6 @@ class Vec3:
     def __sub__(self, other: Vec3) -> Vec3:
         return Vec3(self.x - other.x, self.y - other.y, self.z - other.z)
 
-
 @dataclass(frozen=True)
 class Mat3:
     m: tuple[tuple[float, float, float],
@@ -70,7 +69,6 @@ def Rx(theta: float) -> Mat3:
         (0.0,  s,  c),
     ))
 
-
 def Ry(theta: float) -> Mat3:
     c, s = m.cos(theta), m.sin(theta)
     return Mat3((
@@ -78,7 +76,6 @@ def Ry(theta: float) -> Mat3:
         (0.0, 1.0, 0.0),
         (-s, 0.0,  c),
     ))
-
 
 def Rz(theta: float) -> Mat3:
     c, s = m.cos(theta), m.sin(theta)
@@ -88,13 +85,13 @@ def Rz(theta: float) -> Mat3:
         (0.0, 0.0, 1.0),
     ))
 
-
 def rotateVerts(verts: list[Vec3], rotation: Vec3) -> list[Vec3]:
     rx, ry, rz = rotation.x, rotation.y, rotation.z
     R = Rz(rz) @ Ry(ry) @ Rx(rx)    # Order matters
     return [R @ v for v in verts]
 
 
+### PROJECTION
 def projectToScreen(p: Vec3, cam: tuple[float, float]) -> tuple[float, float] | None:
     # camera looks along +z and p.z must be > 0
     # u = cx + f * (x / z)
@@ -108,12 +105,26 @@ def projectToScreen(p: Vec3, cam: tuple[float, float]) -> tuple[float, float] | 
 
 
 ### MANAGEMENT
-
 _objects: dict[str, object] = {}
 _selected_index = 0
 
 def register_object(obj: object, name: str):
     _objects[name] = obj
+
+def get_selected_object():
+    if not _objects:
+        return None
+    return list(_objects.values())[_selected_index]
+
+def get_selected_object_name():
+    if not _objects:
+        return None
+    return list(_objects.keys())[_selected_index]
+
+def select_next_object():
+    global _selected_index
+    if _objects:
+        _selected_index = (_selected_index + 1) % len(_objects)
 
 def clearObjects(name: str):
     global _selected_index
@@ -129,22 +140,6 @@ def clearObjects(name: str):
                 obj.visible = False
     if _selected_index >= len(_objects):
         _selected_index = 0
-
-def get_selected_object():
-    if not _objects:
-        return None
-    return list(_objects.values())[_selected_index]
-
-def get_selected_object_name():
-    if not _objects:
-        return None
-    return list(_objects.keys())[_selected_index]
-
-
-def select_next_object():
-    global _selected_index
-    if _objects:
-        _selected_index = (_selected_index + 1) % len(_objects)
 
 
 ### OBJECTS
@@ -259,7 +254,6 @@ def _cuboid_faces(
     except: 
         return None
 
-
 class Cuboid:
     def __init__(
         self,
@@ -340,7 +334,6 @@ class Cuboid:
 
 
 ### UI
-
 class SelectedObjectInfo:
     def __init__(self, x: float, y: float):
         self.base_x = x
@@ -494,7 +487,6 @@ class SelectedObjectInfo:
 
 
 ### GRAPHICS
-
 drawAxis()
 cuboid1 = Cuboid(Vec3(0, 0, 200), Vec3(50, 50, 50))
 # cuboid2 = Cuboid(Vec3(0, 0, 200), Vec3(50, 50, 50))
@@ -508,7 +500,6 @@ selected_object_info = SelectedObjectInfo(2, 2)
 
 
 ### EVENTS
-
 def onKeyHold(keys):
     selected_group = get_selected_object()
     if selected_group is None:
