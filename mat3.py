@@ -534,9 +534,9 @@ def onKeyHold(keys):
             updated = True
     
     # Rotation
-    drx = (m.pi/180.0) * ((+5 if 'Q' in keys else 0) + (-5 if 'E' in keys else 0))
-    dry = (m.pi/180.0) * ((+5 if 'R' in keys else 0) + (-5 if 'F' in keys else 0))
-    drz = (m.pi/180.0) * ((+5 if 'C' in keys else 0) + (-5 if 'V' in keys else 0))
+    drx = (m.pi/180.0) * ((+5 if 'R' in keys else 0) + (-5 if 'F' in keys else 0))
+    dry = (m.pi/180.0) * ((+5 if 'C' in keys else 0) + (-5 if 'V' in keys else 0))
+    drz = (m.pi/180.0) * ((+5 if 'Q' in keys else 0) + (-5 if 'E' in keys else 0))
     if drx or dry or drz:
         if hasattr(selected_group, 'rotate'):
             selected_group.rotate(Vec3(drx, dry, drz))
@@ -550,7 +550,7 @@ def onKeyPress(keys):
         select_next_object()
         selected_object_info.update()
     
-    if 'r' in keys:
+    if '`' in keys:
         selected_group = get_selected_object()
         if selected_group is None:
             return
