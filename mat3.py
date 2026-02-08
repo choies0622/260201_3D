@@ -500,7 +500,7 @@ selected_object_info = SelectedObjectInfo(2, 2)
 
 
 ### EVENTS
-def onKeyHold(keys):
+def onKeyHold(keys, modifiers):
     selected_group = get_selected_object()
     if selected_group is None:
         return
@@ -525,9 +525,9 @@ def onKeyHold(keys):
             updated = True
     
     # Rotation
-    drx = (m.pi/180.0) * ((+5 if 'R' in keys else 0) + (-5 if 'F' in keys else 0))
-    dry = (m.pi/180.0) * ((+5 if 'C' in keys else 0) + (-5 if 'V' in keys else 0))
-    drz = (m.pi/180.0) * ((+5 if 'Q' in keys else 0) + (-5 if 'E' in keys else 0))
+    drx = (m.pi/180.0) * ((+5 if 'r' in keys else 0) + (-5 if 'f' in keys else 0))
+    dry = (m.pi/180.0) * ((+5 if 'c' in keys else 0) + (-5 if 'v' in keys else 0))
+    drz = (m.pi/180.0) * ((+5 if 'q' in keys else 0) + (-5 if 'e' in keys else 0))
     if drx or dry or drz:
         if hasattr(selected_group, 'rotate'):
             selected_group.rotate(Vec3(drx, dry, drz))
@@ -536,10 +536,13 @@ def onKeyHold(keys):
     if updated:
         selected_object_info.update()
 
-def onKeyPress(keys):
+def onKeyPress(keys, modifiers):
     if 'tab' in keys:
         select_next_object()
         selected_object_info.update()
+
+    if '/' in keys:
+        pass
     
     if '`' in keys:
         selected_group = get_selected_object()
