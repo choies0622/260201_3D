@@ -303,7 +303,6 @@ class Cuboid:
     def set_cord(self, cord: Vec3):
         self.cord = cord
         return self.redraw()
-
     def reset_cord(self):
         self.cord = self._initial_cord
         return self.redraw()
@@ -320,7 +319,6 @@ class Cuboid:
     def set_size(self, size: Vec3):
         self.size = size
         return self.redraw()
-    
     def reset_size(self):
         self.size = self._initial_size
         return self.redraw()
@@ -344,7 +342,6 @@ class Cuboid:
     def set_rotation(self, rotation: Vec3):
         self.rotation = rotation
         return self.redraw()
-
     def reset_rotation(self):
         self.rotation = self._initial_rotation
         return self.redraw()
@@ -362,10 +359,6 @@ def alert(message: str | None):
         return
     c.app.showMessage(message)
 
-def command_input():
-    command = ask('Command:')
-    alert(command)
-    return command
 
 class InputInfo:
     def __init__(
@@ -674,8 +667,8 @@ def onKeyPress(keys, modifiers=None):
         select_next_object()
         selected_object_info.update()
 
-    if '/' in keys:
-        command = command_input()
+    # if '/' in keys:
+    #     command = command_input()
     
     if '`' in keys:
         selected_group = get_selected_object('obj')
