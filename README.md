@@ -4,14 +4,12 @@ Proj. Started On `Feb 2, 2026`.
 
 
 ## TO DO
-+ [ ] Multi Object Friendly Design
-+ [ ] Graphics Group Management
-+ [ ] Keyboard Binding & Interface
-    + [ ] ` Tab ` Object Select
-    + [ ] ``` ` ``` Visible toggle
-    + [ ] ` r ` Reset Position & Size & Rotation
-+ Depth & Layer
-+ Rotation
++ [x] Multi Object Friendly Design
++ [x] Graphics Group Management
++ [x] Keyboard Binding & Interface
++ [x] Rotation
++ [ ] Movable Cam
++ [ ] Depth & Layer
 
 
 ## About CMU Graphics Library
