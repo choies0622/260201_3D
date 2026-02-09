@@ -26,13 +26,3 @@ from cmu_graphics import cmu_graphics as c
 
 c.run()
 ```
-
-```python
-Rect(
-    left, top, width, height,   # REQUIRED
-    fill='black', border=None,  # optional
-    borderWidth=2, opacity=100,
-    rotateAngle=0, dashes=False,
-    align='left-top', visible=True
-)
-```

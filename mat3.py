@@ -1,11 +1,11 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import math as m
-from cmu_graphics import *  # cmu general
+# from cmu_graphics import *  # cmu general
 from cmu_graphics import cmu_graphics as c  # c.run()
 
 
-bg = Rect(-200, -200, 800, 800, fill='white', border=None)
+bg = c.Rect(-200, -200, 800, 800, fill='white', border=None)
 
 CMU_RUN = True
 SHOW_AXIS = True
@@ -68,7 +68,6 @@ def Rx(theta: float) -> Mat3:
         (0.0,  c, -s),
         (0.0,  s,  c),
     ))
-
 def Ry(theta: float) -> Mat3:
     c, s = m.cos(theta), m.sin(theta)
     return Mat3((
@@ -76,7 +75,6 @@ def Ry(theta: float) -> Mat3:
         (0.0, 1.0, 0.0),
         (-s, 0.0,  c),
     ))
-
 def Rz(theta: float) -> Mat3:
     c, s = m.cos(theta), m.sin(theta)
     return Mat3((
@@ -105,32 +103,40 @@ def projectToScreen(p: Vec3, cam: tuple[float, float]) -> tuple[float, float] | 
 
 
 ### MANAGEMENT
-_objects: dict[str, object] = {}
+_objects: dict[str, dict[str, object]] = {}
 _selected_index = 0
 
-def register_object(obj: object, name: str):
-    _objects[name] = obj
+def register_object(obj: object, name: str, obj_type: str | None = None):
+    if obj_type is None:
+        obj_type = type(obj).__name__
+    _objects[name] = {
+        'obj': obj,
+        'type': obj_type,
+    }
 
-def get_selected_object():
+def get_selected_object(kind: str):
     if not _objects:
         return None
-    return list(_objects.values())[_selected_index]
-
-def get_selected_object_name():
-    if not _objects:
+    if kind == 'obj':
+        return list(_objects.values())[_selected_index]['obj']
+    elif kind == 'name':
+        return list(_objects.keys())[_selected_index]
+    elif kind == 'type':
+        return list(_objects.values())[_selected_index].get('type')
+    else:
         return None
-    return list(_objects.keys())[_selected_index]
 
 def select_next_object():
     global _selected_index
     if _objects:
         _selected_index = (_selected_index + 1) % len(_objects)
 
-def clearObjects(name: str):
+def clearObject(name: str):
     global _selected_index
-    obj = _objects.pop(name, None)
-    if obj is not None:
-        if isinstance(obj, Group):
+    entry = _objects.pop(name, None)
+    if entry is not None:
+        obj = entry['obj'] if isinstance(entry, dict) and 'obj' in entry else entry
+        if isinstance(obj, c.Group):
             obj.clear()
         else:
             group = getattr(obj, 'group', None)
@@ -155,18 +161,18 @@ def drawAxis():
     ]
     projectedAxisVerts = [projectToScreen(something, cam) for something in axisVerts]
 
-    axis = Group(
-        Line(
+    axis = c.Group(
+        c.Line(
             projectedAxisVerts[0][0], projectedAxisVerts[0][1],
             projectedAxisVerts[1][0], projectedAxisVerts[1][1],
             fill = 'red', dashes = True, arrowEnd = True, opacity = 50
         ),
-        Line(
+        c.Line(
             projectedAxisVerts[2][0], projectedAxisVerts[2][1],
             projectedAxisVerts[3][0], projectedAxisVerts[3][1],
             fill = 'green', dashes = True, arrowEnd = True, opacity = 50
         ),
-        Line(
+        c.Line(
             projectedAxisVerts[4][0], projectedAxisVerts[4][1],
             projectedAxisVerts[5][0], projectedAxisVerts[5][1] - 1,
             fill = 'blue', dashes = True, arrowEnd = True, opacity = 50
@@ -180,8 +186,8 @@ def _cuboid_faces(
     size: Vec3,
     rotation: Vec3 | None = None,
     cam: tuple[float, float] | None = None,
-    fill: list[str, str, str, str, str, str] | None = ['lightblue', 'lightblue', 'lightgreen', 'lightgreen', 'lightyellow', 'lightyellow'],
-) -> list[Polygon] | None:
+    fill: list[str, str, str, str, str, str] | None = ['lightblue', 'lightblue', 'lightgreen', 'lightgreen', 'lightyellow', 'lightyellow']
+) -> list[c.Polygon] | None:
     if cam is None:
         cam = globals()['cam']
 
@@ -205,39 +211,43 @@ def _cuboid_faces(
     if any(coord is None for coord in p):
         return None
     
+    center_p = projectToScreen(cord, cam)
+    if center_p is None:
+        return None
+    
     try:
         # Front face (vertices 4, 5, 6, 7)
-        front_face = Polygon(p[4][0], p[4][1],
+        front_face = c.Polygon(p[4][0], p[4][1],
                 p[5][0], p[5][1],
                 p[6][0], p[6][1],
                 p[7][0], p[7][1],
                 fill=fill[0], border='black', borderWidth=1, opacity=50)
         # Back face (vertices 0, 1, 2, 3)
-        back_face = Polygon(p[0][0], p[0][1],
+        back_face = c.Polygon(p[0][0], p[0][1],
                 p[1][0], p[1][1],
                 p[2][0], p[2][1],
                 p[3][0], p[3][1],
                 fill=fill[1], border='black', borderWidth=1, opacity=50)
         # Top face (vertices 3, 2, 6, 7)
-        top_face = Polygon(p[3][0], p[3][1],
+        top_face = c.Polygon(p[3][0], p[3][1],
                 p[2][0], p[2][1],
                 p[6][0], p[6][1],
                 p[7][0], p[7][1],
                 fill=fill[2], border='black', borderWidth=1, opacity=50)
         # Bottom face (vertices 0, 1, 5, 4)
-        bottom_face = Polygon(p[0][0], p[0][1],
+        bottom_face = c.Polygon(p[0][0], p[0][1],
                 p[1][0], p[1][1],
                 p[5][0], p[5][1],
                 p[4][0], p[4][1],
                 fill=fill[3], border='black', borderWidth=1, opacity=50)
         # Right face (vertices 1, 2, 6, 5)
-        right_face = Polygon(p[1][0], p[1][1],
+        right_face = c.Polygon(p[1][0], p[1][1],
                 p[2][0], p[2][1],
                 p[6][0], p[6][1],
                 p[5][0], p[5][1],
                 fill=fill[4], border='black', borderWidth=1, opacity=50)
         # Left face (vertices 0, 3, 7, 4)
-        left_face = Polygon(p[0][0], p[0][1],
+        left_face = c.Polygon(p[0][0], p[0][1],
                 p[3][0], p[3][1],
                 p[7][0], p[7][1],
                 p[4][0], p[4][1],
@@ -271,7 +281,7 @@ class Cuboid:
         self.rotation = rotation if rotation is not None else Vec3(0, 0, 0)
         self._initial_rotation = self.rotation
         self.cam = cam
-        self.group = Group()
+        self.group = c.Group()
         self.redraw()
 
     def redraw(self):
@@ -316,130 +326,223 @@ class Cuboid:
         return self.redraw()
 
     # Rotation (rad)
-    def set_rotation(self, rotation: Vec3):
-        self.rotation = rotation
-        return self.redraw()
-
     def rotate(self, delta: Vec3):
         self.rotation = Vec3(
             self.rotation.x + delta.x,
             self.rotation.y + delta.y,
             self.rotation.z + delta.z,
         )
+        if abs(self.rotation.x) <= 1e-6:
+            self.rotation = Vec3(0, self.rotation.y, self.rotation.z)
+        if abs(self.rotation.y) <= 1e-6:
+            self.rotation = Vec3(self.rotation.x, 0, self.rotation.z)
+        if abs(self.rotation.z) <= 1e-6:
+            self.rotation = Vec3(self.rotation.x, self.rotation.y, 0)
+        return self.redraw()
+
+    def set_rotation(self, rotation: Vec3):
+        self.rotation = rotation
         return self.redraw()
 
     def reset_rotation(self):
         self.rotation = self._initial_rotation
         return self.redraw()
 
+# Ellipsoid
+    # c.Arc(x, y, w, h, start, end, fill=None, border=None, borderWidth=1, opacity=100)
+# Sphere
+
 
 ### UI
+def command_input():
+    command = c.app.getTextInput('Command:')
+    if command:
+        c.app.showMessage(command)
+        return command
+    else:
+        return None
+
+class InputInfo:
+    def __init__(
+        self,
+        key_x: float = 2,
+        key_y: float = 398,
+        mouse_x: float = 2,
+        mouse_y: float = 388,
+    ):
+        self.key_x = key_x
+        self.key_y = key_y
+        self.mouse_x = mouse_x
+        self.mouse_y = mouse_y
+        self.label_keyboard = c.Label(
+            self._format_keyboard(None, None),
+            key_x, key_y,
+            fill='black', align='left-bottom', bold=True,
+            size=10,
+            font='monospace',
+            opacity=80,
+        )
+        self.label_mouse = c.Label(
+            self._format_mouse(None, None, None),
+            mouse_x, mouse_y,
+            fill='black', align='left-bottom', bold=True,
+            size=10,
+            font='monospace',
+            opacity=80,
+        )
+        self.group = c.Group(self.label_keyboard, self.label_mouse)
+
+    def _format_value(self, value):
+        if value is None:
+            return 'None'
+        if value == '':
+            return 'None'
+        if isinstance(value, (list, tuple, set, dict)) and len(value) == 0:
+            return 'None'
+        return str(value)
+
+    def _format_keyboard(self, keys, modifiers):
+        return f'{self._format_value(keys)} | {self._format_value(modifiers)}'
+
+    def _format_mouse(self, x, y, button=None):
+        return f'{self._format_value(x)}, {self._format_value(y)} | {self._format_value(button)}'
+
+    def set_keyboard(self, keys=None, modifiers=None):
+        self.label_keyboard.value = self._format_keyboard(keys, modifiers)
+        self.label_keyboard.left = self.key_x
+        self.label_keyboard.bottom = self.key_y
+
+    def set_mouse(self, x: float | None = None, y: float | None = None, button: int | None = None):
+        self.label_mouse.value = self._format_mouse(x, y, button)
+        self.label_mouse.left = self.mouse_x
+        self.label_mouse.bottom = self.mouse_y
+
+    def set_mouse_pressed(self, pressed: bool):
+        self.label_mouse.bold = not bool(pressed)
+
 class SelectedObjectInfo:
     def __init__(self, x: float, y: float):
         self.base_x = x
         self.base_y = y
-        self.label_selected = Label(
+        self.label_selected = c.Label(
             'SELECTED NAME',
             x, y,
             fill='black', align='left-top', bold=True,
             size=15,
             opacity=80,
         )
-        self.label_position_header = Label(
+        self.label_type_header = c.Label(
+            'Type: ',
+            x, y + 22,
+            fill='black', align='left',
+            size=10,
+            opacity=80,
+        )
+        self.label_type_value = c.Label(
+            '-',
+            x + 50, y + 22,
+            fill='black', align='left', bold=True,
+            size=10,
+            font='monospace',
+            opacity=80,
+        )
+        self.label_position_header = c.Label(
             'Position: ',
-            x, y + 20,
+            x, y + 40,
             fill='black', align='left',
             size=10,
             opacity=80,
         )
-        self.label_position_x = Label(
+        self.label_position_x = c.Label(
             'X',
-            x + 50, y + 20,
-            fill='red', align='left', bold=True,
-            size=10,
-            font='monospace',
-            opacity=80,
-        )
-        self.label_position_y = Label(
-            'Y',
-            x + 50, y + 30,
-            fill='green', align='left', bold=True,
-            size=10,
-            font='monospace',
-            opacity=80,
-        )
-        self.label_position_z = Label(
-            'Z',
             x + 50, y + 40,
-            fill='blue', align='left', bold=True,
+            fill='red', align='left', bold=True,
             size=10,
             font='monospace',
             opacity=80,
         )
-        self.label_size_header = Label(
-            'Size: ',
-            x, y + 60,
-            fill='black', align='left',
+        self.label_position_y = c.Label(
+            'Y',
+            x + 50, y + 50,
+            fill='green', align='left', bold=True,
             size=10,
+            font='monospace',
             opacity=80,
         )
-        self.label_size_w = Label(
-            'W',
+        self.label_position_z = c.Label(
+            'Z',
             x + 50, y + 60,
-            fill='red', align='left', bold=True,
-            size=10,
-            font='monospace',
-            opacity=80,
-        )
-        self.label_size_h = Label(
-            'H',
-            x + 50, y + 70,
-            fill='green', align='left', bold=True,
-            size=10,
-            font='monospace',
-            opacity=80,
-        )
-        self.label_size_d = Label(
-            'D',
-            x + 50, y + 80,
             fill='blue', align='left', bold=True,
             size=10,
             font='monospace',
             opacity=80,
         )
-        self.label_rotation_header = Label(
-            'Rotation: ',
-            x, y + 100,
+        self.label_size_header = c.Label(
+            'Size: ',
+            x, y + 80,
             fill='black', align='left',
             size=10,
             opacity=80,
         )
-        self.label_rotation_rx = Label(
-            'RX',
-            x + 50, y + 100,
+        self.label_size_w = c.Label(
+            'W',
+            x + 50, y + 80,
             fill='red', align='left', bold=True,
             size=10,
             font='monospace',
             opacity=80,
         )
-        self.label_rotation_ry = Label(
-            'RY',
-            x + 50, y + 110,
+        self.label_size_h = c.Label(
+            'H',
+            x + 50, y + 90,
             fill='green', align='left', bold=True,
             size=10,
             font='monospace',
             opacity=80,
         )
-        self.label_rotation_rz = Label(
-            'RZ',
-            x + 50, y + 120,
+        self.label_size_d = c.Label(
+            'D',
+            x + 50, y + 100,
             fill='blue', align='left', bold=True,
             size=10,
             font='monospace',
             opacity=80,
         )
-        self.group = Group(
+        self.label_rotation_header = c.Label(
+            'Rotation: ',
+            x, y + 120,
+            fill='black', align='left',
+            size=10,
+            opacity=80,
+        )
+        self.label_rotation_rx = c.Label(
+            'RX',
+            x + 50, y + 120,
+            fill='red', align='left', bold=True,
+            size=10,
+            font='monospace',
+            opacity=80,
+        )
+        self.label_rotation_ry = c.Label(
+            'RY',
+            x + 50, y + 130,
+            fill='green', align='left', bold=True,
+            size=10,
+            font='monospace',
+            opacity=80,
+        )
+        self.label_rotation_rz = c.Label(
+            'RZ',
+            x + 50, y + 140,
+            fill='blue', align='left', bold=True,
+            size=10,
+            font='monospace',
+            opacity=80,
+        )
+        self.group = c.Group(
             self.label_selected,
+            self.label_type_header,
+            self.label_type_value,
             self.label_position_header,
             self.label_position_x,
             self.label_position_y,
@@ -460,11 +563,13 @@ class SelectedObjectInfo:
         self.label_selected.top = self.base_y
 
     def update(self):
-        obj = get_selected_object()
-        name = get_selected_object_name()
+        obj = get_selected_object('obj')
+        name = get_selected_object('name')
+        obj_type = get_selected_object('type')
         self.label_selected.value = str(name)
         self._anchor_label_selected()
         if obj is None:
+            self.label_type_value.value = '-'
             self.label_position_x.value = '-'
             self.label_position_y.value = '-'
             self.label_position_z.value = '-'
@@ -475,6 +580,7 @@ class SelectedObjectInfo:
             self.label_rotation_ry.value = '-'
             self.label_rotation_rz.value = '-'
             return
+        self.label_type_value.value = str(obj_type) if obj_type is not None else '-'
         self.label_position_x.value = str(obj.cord.x)
         self.label_position_y.value = str(obj.cord.y)
         self.label_position_z.value = str(obj.cord.z)
@@ -497,11 +603,14 @@ register_object(cuboid1, 'cuboid1')
 # register_object(cuboid_which_is_named_very_long, 'cuboid_which_is_named_very_long')
 
 selected_object_info = SelectedObjectInfo(2, 2)
+input_info = InputInfo()
 
 
 ### EVENTS
-def onKeyHold(keys, modifiers):
-    selected_group = get_selected_object()
+def onKeyHold(keys, modifiers=None):
+    input_info.set_keyboard(keys, modifiers)
+    
+    selected_group = get_selected_object('obj')
     if selected_group is None:
         return
     updated = False
@@ -536,16 +645,23 @@ def onKeyHold(keys, modifiers):
     if updated:
         selected_object_info.update()
 
-def onKeyPress(keys, modifiers):
+def onKeyPress(keys, modifiers=None):
+    input_info.set_keyboard(keys, modifiers)
+
     if 'tab' in keys:
+        select_next_object()
+        selected_object_info.update()
+    
+    if 'backspace' in keys:
+        clearObject(get_selected_object('name'))
         select_next_object()
         selected_object_info.update()
 
     if '/' in keys:
-        pass
+        command = command_input()
     
     if '`' in keys:
-        selected_group = get_selected_object()
+        selected_group = get_selected_object('obj')
         if selected_group is None:
             return
         if hasattr(selected_group, 'reset_cord'):
@@ -556,6 +672,23 @@ def onKeyPress(keys, modifiers):
             selected_group.reset_rotation()
         selected_object_info.update()
 
+def onKeyRelease(keys=None, modifiers=None):
+    input_info.set_keyboard(None, None)
+
+def onMouseMove(x, y, button=None):
+    input_info.set_mouse(x, y, button)
+
+def onMouseDrag(x, y, button=None):
+    input_info.set_mouse(x, y, button)
+    input_info.set_mouse_pressed(True)
+
+def onMousePress(x, y, button=None):
+    input_info.set_mouse(x, y, button)
+    input_info.set_mouse_pressed(True)
+
+def onMouseRelease(x, y, button=None):
+    input_info.set_mouse(x, y, None)
+    input_info.set_mouse_pressed(False)
 
 if CMU_RUN:
     c.run()
