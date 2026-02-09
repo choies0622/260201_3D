@@ -332,12 +332,13 @@ class Cuboid:
             self.rotation.y + delta.y,
             self.rotation.z + delta.z,
         )
-        if abs(self.rotation.x) <= 1e-6:
-            self.rotation = Vec3(0, self.rotation.y, self.rotation.z)
-        if abs(self.rotation.y) <= 1e-6:
-            self.rotation = Vec3(self.rotation.x, 0, self.rotation.z)
-        if abs(self.rotation.z) <= 1e-6:
-            self.rotation = Vec3(self.rotation.x, self.rotation.y, 0)
+        rx = 0 if abs(self.rotation.x) <= 1e-6 else self.rotation.x
+        ry = 0 if abs(self.rotation.y) <= 1e-6 else self.rotation.y
+        rz = 0 if abs(self.rotation.z) <= 1e-6 else self.rotation.z
+        rx = rx % (2 * m.pi)
+        ry = ry % (2 * m.pi)
+        rz = rz % (2 * m.pi)
+        self.rotation = Vec3(rx, ry, rz)
         return self.redraw()
 
     def set_rotation(self, rotation: Vec3):
@@ -354,13 +355,17 @@ class Cuboid:
 
 
 ### UI
+def ask(prompt: str) -> str:
+    return c.app.getTextInput(prompt)
+def alert(message: str | None):
+    if message is None:
+        return
+    c.app.showMessage(message)
+
 def command_input():
-    command = c.app.getTextInput('Command:')
-    if command:
-        c.app.showMessage(command)
-        return command
-    else:
-        return None
+    command = ask('Command:')
+    alert(command)
+    return command
 
 class InputInfo:
     def __init__(
@@ -433,14 +438,14 @@ class SelectedObjectInfo:
         )
         self.label_type_header = c.Label(
             'Type: ',
-            x, y + 22,
+            x, y + 25,
             fill='black', align='left',
             size=10,
             opacity=80,
         )
         self.label_type_value = c.Label(
             '-',
-            x + 50, y + 22,
+            x + 50, y + 25,
             fill='black', align='left', bold=True,
             size=10,
             font='monospace',
@@ -618,7 +623,7 @@ def onKeyHold(keys, modifiers=None):
     # Translation
     dx = (-5 if 'a' in keys else 0) + (+5 if 'd' in keys else 0)
     dy = (+5 if 'w' in keys else 0) + (-5 if 's' in keys else 0)
-    dz = (+5 if 'z' in keys else 0) + (-5 if 'x' in keys else 0)
+    dz = (+5 if 'x' in keys else 0) + (-5 if 'z' in keys else 0)
     if dx or dy or dz:
         if hasattr(selected_group, 'move'):
             selected_group.move(Vec3(dx, dy, dz))
@@ -627,7 +632,7 @@ def onKeyHold(keys, modifiers=None):
     # Scale
     dw = (-5 if 'A' in keys else 0) + (+5 if 'D' in keys else 0)
     dh = (+5 if 'W' in keys else 0) + (-5 if 'S' in keys else 0)
-    dd = (+5 if 'Z' in keys else 0) + (-5 if 'X' in keys else 0)
+    dd = (+5 if 'X' in keys else 0) + (-5 if 'Z' in keys else 0)
     if dw or dh or dd:
         if hasattr(selected_group, 'scale'):
             selected_group.scale(Vec3(dw, dh, dd))
@@ -654,6 +659,18 @@ def onKeyPress(keys, modifiers=None):
     
     if 'backspace' in keys:
         clearObject(get_selected_object('name'))
+        select_next_object()
+        selected_object_info.update()
+    
+    if '+' in keys:
+        new_obj = Cuboid(Vec3(0, 0, 200), Vec3(50, 50, 50))
+        base_name = 'cuboid'
+        index = 1
+        new_name = f'{base_name}{index}'
+        while new_name in _objects:
+            index += 1
+            new_name = f'{base_name}{index}'
+        register_object(new_obj, new_name)
         select_next_object()
         selected_object_info.update()
 
