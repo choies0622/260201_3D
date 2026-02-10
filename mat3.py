@@ -10,7 +10,7 @@ bg = c.Rect(-200, -200, 800, 800, fill='white', border=None)
 CMU_RUN = True
 SHOW_AXIS = True
 f = 250
-cam = (200, 200)
+screen_center = (200, 200)
 
 
 ### DEFINE vector(1x3), matrix(3x3)
@@ -58,6 +58,63 @@ class Mat3:
 
         return NotImplemented
 
+### CAMERA
+cam_cord = Vec3(0, 0, 0)
+cam_rotation = Vec3(0, 0, 0)
+
+class Camera:
+    def __init__(self, cord: Vec3, rotation: Vec3):
+        self.cord = cord
+        self.rotation = rotation
+        self._initial_cord = cord
+        self._initial_rotation = rotation
+
+    def _sync_globals(self):
+        globals()['cam_cord'] = self.cord
+        globals()['cam_rotation'] = self.rotation
+
+    def _sync_objects(self):
+        for entry in _objects.values():
+            obj = entry.get('obj') if isinstance(entry, dict) else entry
+            if obj is None:
+                continue
+            if hasattr(obj, 'cam_cord'):
+                obj.cam_cord = self.cord
+            if hasattr(obj, 'cam_rotation'):
+                obj.cam_rotation = self.rotation
+            if hasattr(obj, 'redraw'):
+                obj.redraw()
+        drawAxis()
+
+    def move(self, delta: Vec3):
+        self.cord = self.cord + delta
+        self._sync_globals()
+        self._sync_objects()
+
+    def rotate(self, delta: Vec3):
+        self.rotation = Vec3(
+            self.rotation.x + delta.x,
+            self.rotation.y + delta.y,
+            self.rotation.z + delta.z,
+        )
+        rx = 0 if abs(self.rotation.x) <= 1e-6 else self.rotation.x
+        ry = 0 if abs(self.rotation.y) <= 1e-6 else self.rotation.y
+        rz = 0 if abs(self.rotation.z) <= 1e-6 else self.rotation.z
+        rx = rx % (2 * m.pi)
+        ry = ry % (2 * m.pi)
+        rz = rz % (2 * m.pi)
+        self.rotation = Vec3(rx, ry, rz)
+        self._sync_globals()
+        self._sync_objects()
+
+    def reset(self):
+        self.cord = self._initial_cord
+        self.rotation = self._initial_rotation
+        self._sync_globals()
+        self._sync_objects()
+
+camera = Camera(cam_cord, cam_rotation)
+
 
 ### ROTATION
 # theta must be RAD
@@ -90,21 +147,54 @@ def rotateVerts(verts: list[Vec3], rotation: Vec3) -> list[Vec3]:
 
 
 ### PROJECTION
-def projectToScreen(p: Vec3, cam: tuple[float, float]) -> tuple[float, float] | None:
-    # camera looks along +z and p.z must be > 0
+# 내 목표는: x, y, z 기반의 카메라 고정 좌표계에서 p, q, r 기반의 카메라 좌표계로 변환, 이후 u, v 기반의 화면 좌표계로 변환
+# 따라서, 기존의 cam 변수는: tuple[float, float]에서 Vec3으로 바꿔야됨.
+# 또, 기존의 cam 변수는: 화면 좌표계 기준에서의 중앙을 의미했으나, 이를 카메라 좌표계의 좌표로 바꿔야됨.
+# 따라서, 기존의 cam 변수에서 중앙을 의미하는 부분과 실질적인 카메라 좌표를 의미하는 부분을 분기할 필요성 제기.
+# 기존의 중앙을 의미하는 부분은 screen_center 변수로 따로 정의.
+# 이후, projectToCamera 함수를 새로 정의하여 카메라 좌표계로 변환, 이후 projectToScreen 함수로 화면 좌표계로 변환.
+# cam_cord, cam_rotation 변수를 새로 정의.
+
+
+def projectToCamera(
+    points: Vec3,
+    cam_cord: Vec3 | None = None,
+    cam_rotation: Vec3 | None = None
+) -> Vec3:
+    if cam_cord is None:
+        cam_cord = globals()['cam_cord']
+    if cam_rotation is None:
+        cam_rotation = globals()['cam_rotation']
+    local = points - cam_cord
+    if cam_rotation == Vec3(0, 0, 0):
+        return local
+    rx, ry, rz = cam_rotation.x, cam_rotation.y, cam_rotation.z
+    # Inverse rotation to move world space into camera space
+    R = Rx(-rx) @ Ry(-ry) @ Rz(-rz)
+    return R @ local
+
+
+def projectToScreen(
+    points: Vec3,
+    screen_center: tuple[float, float] | None = None
+) -> tuple[float, float] | None:
+    # camera looks along +z and points.z must be > 0
     # u = cx + f * (x / z)
     # v = cy - f * (y / z)
-    if p.z <= 0:
+    if points.z <= 0:
         return None  # Behind camera or at camera plane
-    cx, cy = cam
-    u = cx + f * (p.x / p.z)
-    v = cy - f * (p.y / p.z)
+    if screen_center is None:
+        screen_center = globals()['screen_center']
+    cx, cy = screen_center
+    u = cx + f * (points.x / points.z)
+    v = cy - f * (points.y / points.z)
     return (u, v)
 
 
 ### MANAGEMENT
 _objects: dict[str, dict[str, object]] = {}
 _selected_index = 0
+_axis_group: c.Group | None = None
 
 def register_object(obj: object, name: str, obj_type: str | None = None):
     if obj_type is None:
@@ -151,7 +241,11 @@ def clearObject(name: str):
 ### OBJECTS
 # Axis
 def drawAxis():
+    global _axis_group
     if not SHOW_AXIS:
+        if _axis_group is not None:
+            _axis_group.clear()
+            _axis_group.visible = False
         return None
     
     axisVerts = [
@@ -159,37 +253,55 @@ def drawAxis():
         Vec3(0, -200, 250), Vec3(0, +200, 250), # y-axis
         Vec3(0, 0, 1e-6),   Vec3(0, 0, 1e+6)    # z-axis
     ]
-    projectedAxisVerts = [projectToScreen(something, cam) for something in axisVerts]
+    projectedAxisVerts = [
+        projectToScreen(projectToCamera(something))
+        for something in axisVerts
+    ]
+    if any(coord is None for coord in projectedAxisVerts):
+        if _axis_group is not None:
+            _axis_group.clear()
+            _axis_group.visible = False
+        return None
 
-    axis = c.Group(
+    if _axis_group is None:
+        _axis_group = c.Group()
+    _axis_group.clear()
+    _axis_group.visible = True
+    _axis_group.add(
         c.Line(
             projectedAxisVerts[0][0], projectedAxisVerts[0][1],
             projectedAxisVerts[1][0], projectedAxisVerts[1][1],
-            fill = 'red', dashes = True, arrowEnd = True, opacity = 50
+            fill='red', dashes=True, arrowEnd=True, opacity=50
         ),
         c.Line(
             projectedAxisVerts[2][0], projectedAxisVerts[2][1],
             projectedAxisVerts[3][0], projectedAxisVerts[3][1],
-            fill = 'green', dashes = True, arrowEnd = True, opacity = 50
+            fill='green', dashes=True, arrowEnd=True, opacity=50
         ),
         c.Line(
             projectedAxisVerts[4][0], projectedAxisVerts[4][1],
             projectedAxisVerts[5][0], projectedAxisVerts[5][1] - 1,
-            fill = 'blue', dashes = True, arrowEnd = True, opacity = 50
+            fill='blue', dashes=True, arrowEnd=True, opacity=50
         )
     )
-    return axis
+    return _axis_group
 
 # Cuboid
 def _cuboid_faces(
     cord: Vec3,
     size: Vec3,
     rotation: Vec3 | None = None,
-    cam: tuple[float, float] | None = None,
+    cam_cord: Vec3 | None = None,
+    cam_rotation: Vec3 | None = None,
+    screen_center: tuple[float, float] | None = None,
     fill: list[str, str, str, str, str, str] | None = ['lightblue', 'lightblue', 'lightgreen', 'lightgreen', 'lightyellow', 'lightyellow']
 ) -> list[c.Polygon] | None:
-    if cam is None:
-        cam = globals()['cam']
+    if cam_cord is None:
+        cam_cord = globals()['cam_cord']
+    if cam_rotation is None:
+        cam_rotation = globals()['cam_rotation']
+    if screen_center is None:
+        screen_center = globals()['screen_center']
 
     w = size.x if size.x > 0 else 1e-6
     h = size.y if size.y > 0 else 1e-6
@@ -205,52 +317,54 @@ def _cuboid_faces(
         verts = rotateVerts(verts, rotation)
     verts = [v + cord for v in verts]
     
-    p = [projectToScreen(v, cam) for v in verts]
+    camera_verts = [projectToCamera(v, cam_cord, cam_rotation) for v in verts]
+    points = [projectToScreen(v, screen_center) for v in camera_verts]
     
     # Ignore vert beyond cam
-    if any(coord is None for coord in p):
+    if any(coord is None for coord in points):
         return None
     
-    center_p = projectToScreen(cord, cam)
-    if center_p is None:
+    center_cam = projectToCamera(cord, cam_cord, cam_rotation)
+    center_point = projectToScreen(center_cam, screen_center)
+    if center_point is None:
         return None
     
     try:
         # Front face (vertices 4, 5, 6, 7)
-        front_face = c.Polygon(p[4][0], p[4][1],
-                p[5][0], p[5][1],
-                p[6][0], p[6][1],
-                p[7][0], p[7][1],
+        front_face = c.Polygon(points[4][0], points[4][1],
+                points[5][0], points[5][1],
+                points[6][0], points[6][1],
+                points[7][0], points[7][1],
                 fill=fill[0], border='black', borderWidth=1, opacity=50)
         # Back face (vertices 0, 1, 2, 3)
-        back_face = c.Polygon(p[0][0], p[0][1],
-                p[1][0], p[1][1],
-                p[2][0], p[2][1],
-                p[3][0], p[3][1],
+        back_face = c.Polygon(points[0][0], points[0][1],
+                points[1][0], points[1][1],
+                points[2][0], points[2][1],
+                points[3][0], points[3][1],
                 fill=fill[1], border='black', borderWidth=1, opacity=50)
         # Top face (vertices 3, 2, 6, 7)
-        top_face = c.Polygon(p[3][0], p[3][1],
-                p[2][0], p[2][1],
-                p[6][0], p[6][1],
-                p[7][0], p[7][1],
+        top_face = c.Polygon(points[3][0], points[3][1],
+                points[2][0], points[2][1],
+                points[6][0], points[6][1],
+                points[7][0], points[7][1],
                 fill=fill[2], border='black', borderWidth=1, opacity=50)
         # Bottom face (vertices 0, 1, 5, 4)
-        bottom_face = c.Polygon(p[0][0], p[0][1],
-                p[1][0], p[1][1],
-                p[5][0], p[5][1],
-                p[4][0], p[4][1],
+        bottom_face = c.Polygon(points[0][0], points[0][1],
+                points[1][0], points[1][1],
+                points[5][0], points[5][1],
+                points[4][0], points[4][1],
                 fill=fill[3], border='black', borderWidth=1, opacity=50)
         # Right face (vertices 1, 2, 6, 5)
-        right_face = c.Polygon(p[1][0], p[1][1],
-                p[2][0], p[2][1],
-                p[6][0], p[6][1],
-                p[5][0], p[5][1],
+        right_face = c.Polygon(points[1][0], points[1][1],
+                points[2][0], points[2][1],
+                points[6][0], points[6][1],
+                points[5][0], points[5][1],
                 fill=fill[4], border='black', borderWidth=1, opacity=50)
         # Left face (vertices 0, 3, 7, 4)
-        left_face = c.Polygon(p[0][0], p[0][1],
-                p[3][0], p[3][1],
-                p[7][0], p[7][1],
-                p[4][0], p[4][1],
+        left_face = c.Polygon(points[0][0], points[0][1],
+                points[3][0], points[3][1],
+                points[7][0], points[7][1],
+                points[4][0], points[4][1],
                 fill=fill[5], border='black', borderWidth=1, opacity=50)
     
         return [
@@ -270,22 +384,37 @@ class Cuboid:
         cord: Vec3,
         size: Vec3,
         rotation: Vec3 | None = None,
-        cam: tuple[float, float] | None = None,
+        cam_cord: Vec3 | None = None,
+        cam_rotation: Vec3 | None = None,
+        screen_center: tuple[float, float] | None = None,
     ):
-        if cam is None:
-            cam = globals()['cam']
+        if cam_cord is None:
+            cam_cord = globals()['cam_cord']
+        if cam_rotation is None:
+            cam_rotation = globals()['cam_rotation']
+        if screen_center is None:
+            screen_center = globals()['screen_center']
         self.cord = cord
         self._initial_cord = cord
         self.size = size
         self._initial_size = size
         self.rotation = rotation if rotation is not None else Vec3(0, 0, 0)
         self._initial_rotation = self.rotation
-        self.cam = cam
+        self.cam_cord = cam_cord
+        self.cam_rotation = cam_rotation
+        self.screen_center = screen_center
         self.group = c.Group()
         self.redraw()
 
     def redraw(self):
-        faces = _cuboid_faces(self.cord, self.size, self.rotation, self.cam)
+        faces = _cuboid_faces(
+            self.cord,
+            self.size,
+            self.rotation,
+            self.cam_cord,
+            self.cam_rotation,
+            self.screen_center
+        )
         self.group.clear()
         if faces is None:
             self.group.visible = False
@@ -608,6 +737,22 @@ input_info = InputInfo()
 def onKeyHold(keys, modifiers=None):
     input_info.set_keyboard(keys, modifiers)
     
+    ## CAMERA
+    # translation
+    cdx = (-5 if 'j' in keys else 0) + (+5 if 'l' in keys else 0)
+    cdy = (+5 if 'i' in keys else 0) + (-5 if 'k' in keys else 0)
+    cdz = (+5 if 'm' in keys else 0) + (-5 if ',' in keys else 0)
+    if cdx or cdy or cdz:
+        camera.move(Vec3(cdx, cdy, cdz))
+
+    ## rotation
+    cdrx = (m.pi/180.0) * ((+5 if 'u' in keys else 0) + (-5 if 'o' in keys else 0))
+    cdry = (m.pi/180.0) * ((+5 if 'y' in keys else 0) + (-5 if 'h' in keys else 0))
+    cdrz = (m.pi/180.0) * ((+5 if 'n' in keys else 0) + (-5 if 'b' in keys else 0))
+    if cdrx or cdry or cdrz:
+        camera.rotate(Vec3(cdrx, cdry, cdrz))
+
+    ## OBJECTS
     selected_group = get_selected_object('obj')
     if selected_group is None:
         return
@@ -681,6 +826,8 @@ def onKeyPress(keys, modifiers=None):
         if hasattr(selected_group, 'reset_rotation'):
             selected_group.reset_rotation()
         selected_object_info.update()
+    if '[' in keys:
+        camera.reset()
 
 def onKeyRelease(keys=None, modifiers=None):
     input_info.set_keyboard(None, None)
