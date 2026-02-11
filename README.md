@@ -8,8 +8,9 @@ Proj. Started On `Feb 2, 2026`.
 + [x] Graphics Group Management
 + [x] Keyboard Binding & Interface
 + [x] Rotation
-+ [ ] Movable Cam
++ [x] Movable Cam
 + [ ] Depth & Layer
++ [ ] Additional Shapes
 
 
 ## About CMU Graphics Library
