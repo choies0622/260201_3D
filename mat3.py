@@ -741,14 +741,14 @@ def onKeyHold(keys, modifiers=None):
     # translation
     cdx = (-5 if 'j' in keys else 0) + (+5 if 'l' in keys else 0)
     cdy = (+5 if 'i' in keys else 0) + (-5 if 'k' in keys else 0)
-    cdz = (+5 if 'm' in keys else 0) + (-5 if ',' in keys else 0)
+    cdz = (+5 if ',' in keys else 0) + (-5 if 'm' in keys else 0)
     if cdx or cdy or cdz:
         camera.move(Vec3(cdx, cdy, cdz))
 
     ## rotation
-    cdrx = (m.pi/180.0) * ((+5 if 'u' in keys else 0) + (-5 if 'o' in keys else 0))
-    cdry = (m.pi/180.0) * ((+5 if 'y' in keys else 0) + (-5 if 'h' in keys else 0))
-    cdrz = (m.pi/180.0) * ((+5 if 'n' in keys else 0) + (-5 if 'b' in keys else 0))
+    cdrx = (m.pi/180.0) * ((+5 if 'h' in keys else 0) + (-5 if 'y' in keys else 0))
+    cdry = (m.pi/180.0) * ((+5 if 'n' in keys else 0) + (-5 if 'b' in keys else 0))
+    cdrz = (m.pi/180.0) * ((+5 if 'u' in keys else 0) + (-5 if 'o' in keys else 0))
     if cdrx or cdry or cdrz:
         camera.rotate(Vec3(cdrx, cdry, cdrz))
 
