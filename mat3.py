@@ -10,7 +10,7 @@ bg = c.Rect(-200, -200, 800, 800, fill='white', border=None)
 CMU_RUN = True
 SHOW_AXIS = True
 f = 250
-screen_center = (200, 200)
+screen_center = (200, 200)  # screen coord
 
 
 ### DEFINE vector(1x3), matrix(3x3)
@@ -59,7 +59,7 @@ class Mat3:
         return NotImplemented
 
 ### CAMERA
-cam_cord = Vec3(0, 0, 0)
+cam_cord = Vec3(0, 0, -200)
 cam_rotation = Vec3(0, 0, 0)
 
 class Camera:
@@ -248,10 +248,12 @@ def drawAxis():
             _axis_group.visible = False
         return None
     
+    # ALL axes intersect at (0,0,0)
+    axis_len = 200
     axisVerts = [
-        Vec3(-200, 0, 250), Vec3(+200, 0, 250), # x-axis
-        Vec3(0, -200, 250), Vec3(0, +200, 250), # y-axis
-        Vec3(0, 0, 1e-6),   Vec3(0, 0, 1e+6)    # z-axis
+        Vec3(-axis_len, 0, 0), Vec3(+axis_len, 0, 0),   # x-axis
+        Vec3(0, -axis_len, 0), Vec3(0, +axis_len, 0),   # y-axis
+        Vec3(0, 0, -axis_len + 1), Vec3(0, 0, +axis_len) # z-axis (AVOID cam z = -200)
     ]
     projectedAxisVerts = [
         projectToScreen(projectToCamera(something))
@@ -280,7 +282,7 @@ def drawAxis():
         ),
         c.Line(
             projectedAxisVerts[4][0], projectedAxisVerts[4][1],
-            projectedAxisVerts[5][0], projectedAxisVerts[5][1] - 1,
+            projectedAxisVerts[5][0], projectedAxisVerts[5][1],
             fill='blue', dashes=True, arrowEnd=True, opacity=50
         )
     )
@@ -547,6 +549,86 @@ class InputInfo:
     def set_mouse_pressed(self, pressed: bool):
         self.label_mouse.bold = not bool(pressed)
 
+class CameraInfo:
+    def __init__(self, x: float = 398, y: float = 388):
+        self.base_x = x
+        self.base_y = y
+        self.label_camera_position_x = c.Label(
+            'X',
+            x, y,
+            fill='red', align='right', bold=True,
+            size=10,
+            opacity=80,
+        )
+        self.label_camera_position_y = c.Label(
+            'Y',
+            x, y,
+            fill='green', align='right', bold=True,
+            size=10,
+            opacity=80,
+        )
+        self.label_camera_position_z = c.Label(
+            'Z',
+            x, y,
+            fill='blue', align='right', bold=True,
+            size=10,
+            opacity=80,
+        )
+        self.label_camera_rotation_rx = c.Label(
+            'RX',
+            x, y,
+            fill='red', align='right', bold=True,
+            size=10,
+            opacity=80,
+        )
+        self.label_camera_rotation_ry = c.Label(
+            'RY',
+            x, y,
+            fill='green', align='right', bold=True,
+            size=10,
+            opacity=80,
+        )
+        self.label_camera_rotation_rz = c.Label(
+            'RZ',
+            x, y,
+            fill='blue', align='right', bold=True,
+            size=10,
+            opacity=80,
+        )
+        self.group = c.Group(
+            self.label_camera_position_x,
+            self.label_camera_position_y,
+            self.label_camera_position_z,
+            self.label_camera_rotation_rx,
+            self.label_camera_rotation_ry,
+            self.label_camera_rotation_rz,
+        )
+        self.update()
+
+    def _anchor_all_labels(self):
+        # position
+        self.label_camera_position_x.right = self.base_x - 5 # x
+        self.label_camera_position_x.top = self.base_y - 60
+        self.label_camera_position_y.right = self.base_x - 5 # y
+        self.label_camera_position_y.top = self.base_y - 50
+        self.label_camera_position_z.right = self.base_x - 5 # z
+        self.label_camera_position_z.top = self.base_y - 40
+        # rotation
+        self.label_camera_rotation_rx.right = self.base_x - 5 # rx
+        self.label_camera_rotation_rx.top = self.base_y - 20
+        self.label_camera_rotation_ry.right = self.base_x - 5 # ry
+        self.label_camera_rotation_ry.top = self.base_y - 10
+        self.label_camera_rotation_rz.right = self.base_x - 5 # rz
+        self.label_camera_rotation_rz.top = self.base_y
+    def update(self):
+        self.label_camera_position_x.value = str(camera.cord.x)
+        self.label_camera_position_y.value = str(camera.cord.y)
+        self.label_camera_position_z.value = str(camera.cord.z)
+        self.label_camera_rotation_rx.value = str(camera.rotation.x)
+        self.label_camera_rotation_ry.value = str(camera.rotation.y)
+        self.label_camera_rotation_rz.value = str(camera.rotation.z)
+        self._anchor_all_labels()
+
 class SelectedObjectInfo:
     def __init__(self, x: float, y: float):
         self.base_x = x
@@ -558,31 +640,17 @@ class SelectedObjectInfo:
             size=15,
             opacity=80,
         )
-        self.label_type_header = c.Label(
-            'Type: ',
-            x, y + 25,
-            fill='black', align='left',
-            size=10,
-            opacity=80,
-        )
-        self.label_type_value = c.Label(
+        self.label_type = c.Label(
             '-',
-            x + 50, y + 25,
-            fill='black', align='left', bold=True,
+            x, y,
+            fill='black', align='left-bottom', bold=True,
             size=10,
             font='monospace',
             opacity=80,
         )
-        self.label_position_header = c.Label(
-            'Position: ',
-            x, y + 40,
-            fill='black', align='left',
-            size=10,
-            opacity=80,
-        )
         self.label_position_x = c.Label(
             'X',
-            x + 50, y + 40,
+            x, y,
             fill='red', align='left', bold=True,
             size=10,
             font='monospace',
@@ -590,7 +658,7 @@ class SelectedObjectInfo:
         )
         self.label_position_y = c.Label(
             'Y',
-            x + 50, y + 50,
+            x, y,
             fill='green', align='left', bold=True,
             size=10,
             font='monospace',
@@ -598,22 +666,15 @@ class SelectedObjectInfo:
         )
         self.label_position_z = c.Label(
             'Z',
-            x + 50, y + 60,
+            x, y,
             fill='blue', align='left', bold=True,
             size=10,
             font='monospace',
             opacity=80,
         )
-        self.label_size_header = c.Label(
-            'Size: ',
-            x, y + 80,
-            fill='black', align='left',
-            size=10,
-            opacity=80,
-        )
         self.label_size_w = c.Label(
             'W',
-            x + 50, y + 80,
+            x, y,
             fill='red', align='left', bold=True,
             size=10,
             font='monospace',
@@ -621,7 +682,7 @@ class SelectedObjectInfo:
         )
         self.label_size_h = c.Label(
             'H',
-            x + 50, y + 90,
+            x, y,
             fill='green', align='left', bold=True,
             size=10,
             font='monospace',
@@ -629,22 +690,15 @@ class SelectedObjectInfo:
         )
         self.label_size_d = c.Label(
             'D',
-            x + 50, y + 100,
+            x, y,
             fill='blue', align='left', bold=True,
             size=10,
             font='monospace',
             opacity=80,
         )
-        self.label_rotation_header = c.Label(
-            'Rotation: ',
-            x, y + 120,
-            fill='black', align='left',
-            size=10,
-            opacity=80,
-        )
         self.label_rotation_rx = c.Label(
             'RX',
-            x + 50, y + 120,
+            x, y,
             fill='red', align='left', bold=True,
             size=10,
             font='monospace',
@@ -652,7 +706,7 @@ class SelectedObjectInfo:
         )
         self.label_rotation_ry = c.Label(
             'RY',
-            x + 50, y + 130,
+            x, y,
             fill='green', align='left', bold=True,
             size=10,
             font='monospace',
@@ -660,7 +714,7 @@ class SelectedObjectInfo:
         )
         self.label_rotation_rz = c.Label(
             'RZ',
-            x + 50, y + 140,
+            x, y,
             fill='blue', align='left', bold=True,
             size=10,
             font='monospace',
@@ -668,35 +722,53 @@ class SelectedObjectInfo:
         )
         self.group = c.Group(
             self.label_selected,
-            self.label_type_header,
-            self.label_type_value,
-            self.label_position_header,
+            self.label_type,
             self.label_position_x,
             self.label_position_y,
             self.label_position_z,
-            self.label_size_header,
             self.label_size_w,
             self.label_size_h,
             self.label_size_d,
-            self.label_rotation_header,
             self.label_rotation_rx,
             self.label_rotation_ry,
             self.label_rotation_rz,
         )
         self.update()
 
-    def _anchor_label_selected(self):
+    def _anchor_all_labels(self):
         self.label_selected.left = self.base_x
         self.label_selected.top = self.base_y
+        self.label_type.left = self.base_x + 3
+        self.label_type.top = self.base_y + 16
+        # position
+        self.label_position_x.left = self.base_x + 5  # x
+        self.label_position_x.top = self.base_y + 30
+        self.label_position_y.left = self.base_x + 5   # y
+        self.label_position_y.top = self.base_y + 40
+        self.label_position_z.left = self.base_x + 5   # z
+        self.label_position_z.top = self.base_y + 50
+        # size
+        self.label_size_w.left = self.base_x + 35   # w
+        self.label_size_w.top = self.base_y + 30
+        self.label_size_h.left = self.base_x + 35   # h
+        self.label_size_h.top = self.base_y + 40
+        self.label_size_d.left = self.base_x + 35   # d
+        self.label_size_d.top = self.base_y + 50
+        # rotation
+        self.label_rotation_rx.left = self.base_x + 5   # rx
+        self.label_rotation_rx.top = self.base_y + 70
+        self.label_rotation_ry.left = self.base_x + 5   # ry
+        self.label_rotation_ry.top = self.base_y + 80
+        self.label_rotation_rz.left = self.base_x + 5   # rz
+        self.label_rotation_rz.top = self.base_y + 90
 
     def update(self):
         obj = get_selected_object('obj')
         name = get_selected_object('name')
         obj_type = get_selected_object('type')
         self.label_selected.value = str(name)
-        self._anchor_label_selected()
         if obj is None:
-            self.label_type_value.value = '-'
+            self.label_type.value = '-'
             self.label_position_x.value = '-'
             self.label_position_y.value = '-'
             self.label_position_z.value = '-'
@@ -706,22 +778,23 @@ class SelectedObjectInfo:
             self.label_rotation_rx.value = '-'
             self.label_rotation_ry.value = '-'
             self.label_rotation_rz.value = '-'
-            return
-        self.label_type_value.value = str(obj_type) if obj_type is not None else '-'
-        self.label_position_x.value = str(obj.cord.x)
-        self.label_position_y.value = str(obj.cord.y)
-        self.label_position_z.value = str(obj.cord.z)
-        self.label_size_w.value = str(obj.size.x)
-        self.label_size_h.value = str(obj.size.y)
-        self.label_size_d.value = str(obj.size.z)
-        self.label_rotation_rx.value = str(obj.rotation.x)
-        self.label_rotation_ry.value = str(obj.rotation.y)
-        self.label_rotation_rz.value = str(obj.rotation.z)
+        else:
+            self.label_type.value = str(obj_type) if obj_type is not None else '-'
+            self.label_position_x.value = str(obj.cord.x)
+            self.label_position_y.value = str(obj.cord.y)
+            self.label_position_z.value = str(obj.cord.z)
+            self.label_size_w.value = str(obj.size.x)
+            self.label_size_h.value = str(obj.size.y)
+            self.label_size_d.value = str(obj.size.z)
+            self.label_rotation_rx.value = str(obj.rotation.x)
+            self.label_rotation_ry.value = str(obj.rotation.y)
+            self.label_rotation_rz.value = str(obj.rotation.z)
+        self._anchor_all_labels()
 
 
 ### GRAPHICS
 drawAxis()
-cuboid1 = Cuboid(Vec3(0, 0, 200), Vec3(50, 50, 50))
+cuboid1 = Cuboid(Vec3(0, 0, 0), Vec3(50, 50, 50))
 # cuboid2 = Cuboid(Vec3(0, 0, 200), Vec3(50, 50, 50))
 # cuboid_which_is_named_very_long = Cuboid(Vec3(0, 0, 200), Vec3(50, 50, 50))
 
@@ -731,6 +804,7 @@ register_object(cuboid1, 'cuboid1')
 
 selected_object_info = SelectedObjectInfo(2, 2)
 input_info = InputInfo()
+camera_info = CameraInfo()
 
 
 ### EVENTS
@@ -738,25 +812,31 @@ def onKeyHold(keys, modifiers=None):
     input_info.set_keyboard(keys, modifiers)
     
     ## CAMERA
+    cam_updated = False
+
     # translation
     cdx = (-5 if 'j' in keys else 0) + (+5 if 'l' in keys else 0)
     cdy = (+5 if 'i' in keys else 0) + (-5 if 'k' in keys else 0)
-    cdz = (+5 if 'm' in keys else 0) + (-5 if ',' in keys else 0)
+    cdz = (+5 if '.' in keys else 0) + (-5 if ',' in keys else 0)
     if cdx or cdy or cdz:
         camera.move(Vec3(cdx, cdy, cdz))
-
+        cam_updated = True
     ## rotation
-    cdrx = (m.pi/180.0) * ((+5 if 'u' in keys else 0) + (-5 if 'o' in keys else 0))
-    cdry = (m.pi/180.0) * ((+5 if 'y' in keys else 0) + (-5 if 'h' in keys else 0))
-    cdrz = (m.pi/180.0) * ((+5 if 'n' in keys else 0) + (-5 if 'b' in keys else 0))
+    cdrx = (m.pi/180.0) * ((+5 if 'h' in keys else 0) + (-5 if 'y' in keys else 0))
+    cdry = (m.pi/180.0) * ((+5 if 'm' in keys else 0) + (-5 if 'n' in keys else 0))
+    cdrz = (m.pi/180.0) * ((+5 if 'u' in keys else 0) + (-5 if 'o' in keys else 0))
     if cdrx or cdry or cdrz:
         camera.rotate(Vec3(cdrx, cdry, cdrz))
-
+        cam_updated = True
+    
+    if cam_updated:
+        camera_info.update()
+    
     ## OBJECTS
     selected_group = get_selected_object('obj')
     if selected_group is None:
         return
-    updated = False
+    obj_updated = False
 
     # Translation
     dx = (-5 if 'a' in keys else 0) + (+5 if 'd' in keys else 0)
@@ -765,7 +845,7 @@ def onKeyHold(keys, modifiers=None):
     if dx or dy or dz:
         if hasattr(selected_group, 'move'):
             selected_group.move(Vec3(dx, dy, dz))
-            updated = True
+            obj_updated = True
     
     # Scale
     dw = (-5 if 'A' in keys else 0) + (+5 if 'D' in keys else 0)
@@ -774,7 +854,7 @@ def onKeyHold(keys, modifiers=None):
     if dw or dh or dd:
         if hasattr(selected_group, 'scale'):
             selected_group.scale(Vec3(dw, dh, dd))
-            updated = True
+            obj_updated = True
     
     # Rotation
     drx = (m.pi/180.0) * ((+5 if 'r' in keys else 0) + (-5 if 'f' in keys else 0))
@@ -783,9 +863,9 @@ def onKeyHold(keys, modifiers=None):
     if drx or dry or drz:
         if hasattr(selected_group, 'rotate'):
             selected_group.rotate(Vec3(drx, dry, drz))
-            updated = True
+            obj_updated = True
     
-    if updated:
+    if obj_updated:
         selected_object_info.update()
 
 def onKeyPress(keys, modifiers=None):
@@ -801,7 +881,7 @@ def onKeyPress(keys, modifiers=None):
         selected_object_info.update()
     
     if '+' in keys:
-        new_obj = Cuboid(Vec3(0, 0, 200), Vec3(50, 50, 50))
+        new_obj = Cuboid(Vec3(0, 0, 0), Vec3(50, 50, 50))
         base_name = 'cuboid'
         index = 1
         new_name = f'{base_name}{index}'
@@ -828,6 +908,7 @@ def onKeyPress(keys, modifiers=None):
         selected_object_info.update()
     if '[' in keys:
         camera.reset()
+        camera_info.update()
 
 def onKeyRelease(keys=None, modifiers=None):
     input_info.set_keyboard(None, None)
