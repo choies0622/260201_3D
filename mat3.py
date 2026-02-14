@@ -5,10 +5,8 @@ import math as m
 from cmu_graphics import cmu_graphics as c  # c.run()
 
 
-bg = c.Rect(-200, -200, 800, 800, fill='white', border=None)
-
 CMU_RUN = True
-SHOW_AXIS = True
+
 f = 250
 screen_center = (200, 200)  # screen coord
 
@@ -85,6 +83,7 @@ class Camera:
             if hasattr(obj, 'redraw'):
                 obj.redraw()
         drawAxis()
+        depth_layer.update(_objects, self.cord, self.rotation, _axis_group)
 
     def move(self, delta: Vec3):
         self.cord = self.cord + delta
@@ -155,12 +154,14 @@ def rotateVerts(verts: list[Vec3], rotation: Vec3) -> list[Vec3]:
 # 이후, projectToCamera 함수를 새로 정의하여 카메라 좌표계로 변환, 이후 projectToScreen 함수로 화면 좌표계로 변환.
 # cam_cord, cam_rotation 변수를 새로 정의.
 
-
 def projectToCamera(
     points: Vec3,
     cam_cord: Vec3 | None = None,
     cam_rotation: Vec3 | None = None
 ) -> Vec3:
+    """
+    WORLD COORD SYS: x, y, z  ->  CAMERA COORD SYS: p, q, r
+    """
     if cam_cord is None:
         cam_cord = globals()['cam_cord']
     if cam_rotation is None:
@@ -172,12 +173,15 @@ def projectToCamera(
     # Inverse rotation to move world space into camera space
     R = Rx(-rx) @ Ry(-ry) @ Rz(-rz)
     return R @ local
-
-
 def projectToScreen(
     points: Vec3,
     screen_center: tuple[float, float] | None = None
 ) -> tuple[float, float] | None:
+    """
+    CAMERA COORD SYS: p, q, r  ->  SCREEN COORD SYS: u, v
+
+    MUST: z > 0
+    """
     # camera looks along +z and points.z must be > 0
     # u = cx + f * (x / z)
     # v = cy - f * (y / z)
@@ -190,18 +194,41 @@ def projectToScreen(
     v = cy - f * (points.y / points.z)
     return (u, v)
 
+def _clip_segment_to_near_plane(
+    p0: Vec3, p1: Vec3, near: float = 1e-6
+) -> tuple[Vec3, Vec3] | None:
+    """
+    Clip a line segment (in camera space) to the near plane.
+    Returns (clipped_p0, clipped_p1) if any part is visible, else None.
+    """
+    z0, z1 = p0.z, p1.z
+    if z0 > near and z1 > near:
+        return (p0, p1)
+    if z0 <= near and z1 <= near:
+        return None
+    # One visible, one behind: P(t) = p0 + t*(p1-p0) where z = near
+    t = (near - z0) / (z1 - z0)
+    clipped = Vec3(
+        p0.x + t * (p1.x - p0.x),
+        p0.y + t * (p1.y - p0.y),
+        near,
+    )
+    if z0 > near:
+        return (p0, clipped)
+    return (clipped, p1)
+
 
 ### MANAGEMENT
 _objects: dict[str, dict[str, object]] = {}
 _selected_index = 0
 _axis_group: c.Group | None = None
+_obj_order: list[int, object] = []
 
 def register_object(obj: object, name: str, obj_type: str | None = None):
-    if obj_type is None:
-        obj_type = type(obj).__name__
+    _obj_order.append((len(_obj_order), obj))
     _objects[name] = {
         'obj': obj,
-        'type': obj_type,
+        'type': obj_type if obj_type is not None else type(obj).__name__,
     }
 
 def get_selected_object(kind: str):
@@ -240,6 +267,7 @@ def clearObject(name: str):
 
 ### OBJECTS
 # Axis
+SHOW_AXIS = True
 def drawAxis():
     global _axis_group
     if not SHOW_AXIS:
@@ -247,45 +275,32 @@ def drawAxis():
             _axis_group.clear()
             _axis_group.visible = False
         return None
-    
+
     # ALL axes intersect at (0,0,0)
     axis_len = 200
-    axisVerts = [
-        Vec3(-axis_len, 0, 0), Vec3(+axis_len, 0, 0),   # x-axis
-        Vec3(0, -axis_len, 0), Vec3(0, +axis_len, 0),   # y-axis
-        Vec3(0, 0, -axis_len + 1), Vec3(0, 0, +axis_len) # z-axis (AVOID cam z = -200)
+    axis_pairs = [
+        (Vec3(-axis_len, 0, 0), Vec3(+axis_len, 0, 0), 'red'),    # x
+        (Vec3(0, -axis_len, 0), Vec3(0, +axis_len, 0), 'green'),  # y
+        (Vec3(0, 0, -axis_len + 1), Vec3(0, 0, +axis_len), 'blue'),  # z
     ]
-    projectedAxisVerts = [
-        projectToScreen(projectToCamera(something))
-        for something in axisVerts
-    ]
-    if any(coord is None for coord in projectedAxisVerts):
-        if _axis_group is not None:
-            _axis_group.clear()
-            _axis_group.visible = False
-        return None
 
     if _axis_group is None:
         _axis_group = c.Group()
     _axis_group.clear()
     _axis_group.visible = True
-    _axis_group.add(
-        c.Line(
-            projectedAxisVerts[0][0], projectedAxisVerts[0][1],
-            projectedAxisVerts[1][0], projectedAxisVerts[1][1],
-            fill='red', dashes=True, arrowEnd=True, opacity=50
-        ),
-        c.Line(
-            projectedAxisVerts[2][0], projectedAxisVerts[2][1],
-            projectedAxisVerts[3][0], projectedAxisVerts[3][1],
-            fill='green', dashes=True, arrowEnd=True, opacity=50
-        ),
-        c.Line(
-            projectedAxisVerts[4][0], projectedAxisVerts[4][1],
-            projectedAxisVerts[5][0], projectedAxisVerts[5][1],
-            fill='blue', dashes=True, arrowEnd=True, opacity=50
+
+    for p0_world, p1_world, color in axis_pairs:
+        p0_cam = projectToCamera(p0_world); p1_cam = projectToCamera(p1_world)
+        clipped = _clip_segment_to_near_plane(p0_cam, p1_cam)
+        if clipped is None:
+            continue
+        q0 = projectToScreen(clipped[0]); q1 = projectToScreen(clipped[1])
+        if q0 is None or q1 is None:
+            continue
+        _axis_group.add(
+            c.Line(q0[0], q0[1], q1[0], q1[1],
+                   fill=color, dashes=True, arrowEnd=True, opacity=50)
         )
-    )
     return _axis_group
 
 # Cuboid
@@ -381,6 +396,23 @@ def _cuboid_faces(
         return None
 
 class Cuboid:
+    """
+    WORLD (x, y, z)
+
+    - redraw
+    - TRANSLATION
+        - move (delta: Vec3)
+        - set_cord (cord: Vec3)
+        - reset_cord
+    - SCALING
+        - scale (delta: Vec3)
+        - set_size (size: Vec3)
+        - reset_size
+    - ROTATION
+        - rotate (delta: Vec3)
+        - set_rotation (rotation: Vec3)
+        - reset_rotation
+    """
     def __init__(
         self,
         cord: Vec3,
@@ -482,6 +514,44 @@ class Cuboid:
 # Sphere
 
 
+class DepthLayerManager:
+    """Manages render order by camera-space depth using toFront/toBack."""
+
+    def _depth_z(self, obj, cam_cord: Vec3, cam_rotation: Vec3) -> float:
+        ref = getattr(obj, 'cord', None)
+        if ref is None:
+            return float('inf')
+        p = projectToCamera(ref, cam_cord, cam_rotation)
+        return p.z if p.z > 0 else float('inf')
+
+    def update(
+        self,
+        obj_registry: dict,
+        cam_cord: Vec3,
+        cam_rotation: Vec3,
+        axis_group: c.Group | None = None,
+    ) -> None:
+        entries = [(n, e['obj']) for n, e in obj_registry.items()]
+        # drawable: obj.group if exists, else obj itself (shape/Group auto in app.group per CMU docs)
+        drawable_get = lambda o: getattr(o, 'group', o)
+        entries = [
+            (n, o)
+            for n, o in entries
+            if (d := drawable_get(o)) is not None
+            and hasattr(d, 'toFront')
+            and getattr(d, 'visible', True)
+        ]
+        sorted_entries = sorted(
+            entries,
+            key = lambda e: self._depth_z(e[1], cam_cord, cam_rotation),
+            reverse = True,
+        )
+        for _, obj in sorted_entries:
+            drawable_get(obj).toFront()
+        if axis_group is not None and getattr(axis_group, 'visible', False):
+            axis_group.toBack()
+
+
 ### UI
 def ask(prompt: str) -> str:
     return c.app.getTextInput(prompt)
@@ -492,6 +562,14 @@ def alert(message: str | None):
 
 
 class InputInfo:
+    """
+    UI for input
+
+    - Keyboard: keys | modifiers
+    - Mouse: x, y | button
+
+    Pos: (u, v) = (2, 398), left-bottom
+    """
     def __init__(
         self,
         key_x: float = 2,
@@ -550,6 +628,14 @@ class InputInfo:
         self.label_mouse.bold = not bool(pressed)
 
 class CameraInfo:
+    """
+    UI for camera
+
+    - Position (x, y, z)
+    - Rotation (rx, ry, rz)
+
+    Pos: (u, v) = (398, 388), right-bottom
+    """
     def __init__(self, x: float = 398, y: float = 388):
         self.base_x = x
         self.base_y = y
@@ -558,6 +644,7 @@ class CameraInfo:
             x, y,
             fill='red', align='right', bold=True,
             size=10,
+            font='monospace',
             opacity=80,
         )
         self.label_camera_position_y = c.Label(
@@ -565,6 +652,7 @@ class CameraInfo:
             x, y,
             fill='green', align='right', bold=True,
             size=10,
+            font='monospace',
             opacity=80,
         )
         self.label_camera_position_z = c.Label(
@@ -572,6 +660,7 @@ class CameraInfo:
             x, y,
             fill='blue', align='right', bold=True,
             size=10,
+            font='monospace',
             opacity=80,
         )
         self.label_camera_rotation_rx = c.Label(
@@ -579,6 +668,7 @@ class CameraInfo:
             x, y,
             fill='red', align='right', bold=True,
             size=10,
+            font='monospace',
             opacity=80,
         )
         self.label_camera_rotation_ry = c.Label(
@@ -586,6 +676,7 @@ class CameraInfo:
             x, y,
             fill='green', align='right', bold=True,
             size=10,
+            font='monospace',
             opacity=80,
         )
         self.label_camera_rotation_rz = c.Label(
@@ -593,6 +684,7 @@ class CameraInfo:
             x, y,
             fill='blue', align='right', bold=True,
             size=10,
+            font='monospace',
             opacity=80,
         )
         self.group = c.Group(
@@ -624,13 +716,24 @@ class CameraInfo:
         self.label_camera_position_x.value = str(camera.cord.x)
         self.label_camera_position_y.value = str(camera.cord.y)
         self.label_camera_position_z.value = str(camera.cord.z)
-        self.label_camera_rotation_rx.value = str(camera.rotation.x)
-        self.label_camera_rotation_ry.value = str(camera.rotation.y)
-        self.label_camera_rotation_rz.value = str(camera.rotation.z)
+        self.label_camera_rotation_rx.value = str(camera.rotation.x) + ' (' + str(round(camera.rotation.x * 180.0 / m.pi)) + 'º)'
+        self.label_camera_rotation_ry.value = str(camera.rotation.y) + ' (' + str(round(camera.rotation.y * 180.0 / m.pi)) + 'º)'
+        self.label_camera_rotation_rz.value = str(camera.rotation.z) + ' (' + str(round(camera.rotation.z * 180.0 / m.pi)) + 'º)'
         self._anchor_all_labels()
 
 class SelectedObjectInfo:
-    def __init__(self, x: float, y: float):
+    """
+    UI for selected object
+
+    - Selected name
+    - Object type
+    - Position (x, y, z)
+    - Size (w, h, d)
+    - Rotation (rx, ry, rz)
+
+    Pos: (u, v) = (2, 2), left-top
+    """
+    def __init__(self, x: float = 2, y: float = 2):
         self.base_x = x
         self.base_y = y
         self.label_selected = c.Label(
@@ -697,7 +800,7 @@ class SelectedObjectInfo:
             opacity=80,
         )
         self.label_rotation_rx = c.Label(
-            'RX',
+            'RX | deg',
             x, y,
             fill='red', align='left', bold=True,
             size=10,
@@ -705,7 +808,7 @@ class SelectedObjectInfo:
             opacity=80,
         )
         self.label_rotation_ry = c.Label(
-            'RY',
+            'RY | deg',
             x, y,
             fill='green', align='left', bold=True,
             size=10,
@@ -713,7 +816,7 @@ class SelectedObjectInfo:
             opacity=80,
         )
         self.label_rotation_rz = c.Label(
-            'RZ',
+            'RZ | deg',
             x, y,
             fill='blue', align='left', bold=True,
             size=10,
@@ -780,20 +883,21 @@ class SelectedObjectInfo:
             self.label_rotation_rz.value = '-'
         else:
             self.label_type.value = str(obj_type) if obj_type is not None else '-'
-            self.label_position_x.value = str(obj.cord.x)
-            self.label_position_y.value = str(obj.cord.y)
-            self.label_position_z.value = str(obj.cord.z)
-            self.label_size_w.value = str(obj.size.x)
-            self.label_size_h.value = str(obj.size.y)
-            self.label_size_d.value = str(obj.size.z)
-            self.label_rotation_rx.value = str(obj.rotation.x)
-            self.label_rotation_ry.value = str(obj.rotation.y)
-            self.label_rotation_rz.value = str(obj.rotation.z)
+            self.label_position_x.value = str(float(obj.cord.x))
+            self.label_position_y.value = str(float(obj.cord.y))
+            self.label_position_z.value = str(float(obj.cord.z))
+            self.label_size_w.value = str(float(obj.size.x))
+            self.label_size_h.value = str(float(obj.size.y))
+            self.label_size_d.value = str(float(obj.size.z))
+            self.label_rotation_rx.value = str(float(obj.rotation.x)) + ' (' + str(round(obj.rotation.x * 180.0 / m.pi)) + 'º)'
+            self.label_rotation_ry.value = str(float(obj.rotation.y)) + ' (' + str(round(obj.rotation.y * 180.0 / m.pi)) + 'º)'
+            self.label_rotation_rz.value = str(float(obj.rotation.z)) + ' (' + str(round(obj.rotation.z * 180.0 / m.pi)) + 'º)'
         self._anchor_all_labels()
 
 
 ### GRAPHICS
 drawAxis()
+depth_layer = DepthLayerManager()
 cuboid1 = Cuboid(Vec3(0, 0, 0), Vec3(50, 50, 50))
 # cuboid2 = Cuboid(Vec3(0, 0, 200), Vec3(50, 50, 50))
 # cuboid_which_is_named_very_long = Cuboid(Vec3(0, 0, 200), Vec3(50, 50, 50))
@@ -802,7 +906,7 @@ register_object(cuboid1, 'cuboid1')
 # register_object(cuboid2, 'cuboid2')
 # register_object(cuboid_which_is_named_very_long, 'cuboid_which_is_named_very_long')
 
-selected_object_info = SelectedObjectInfo(2, 2)
+selected_object_info = SelectedObjectInfo()
 input_info = InputInfo()
 camera_info = CameraInfo()
 
@@ -813,7 +917,6 @@ def onKeyHold(keys, modifiers=None):
     
     ## CAMERA
     cam_updated = False
-
     # translation
     cdx = (-5 if 'j' in keys else 0) + (+5 if 'l' in keys else 0)
     cdy = (+5 if 'i' in keys else 0) + (-5 if 'k' in keys else 0)
@@ -837,7 +940,6 @@ def onKeyHold(keys, modifiers=None):
     if selected_group is None:
         return
     obj_updated = False
-
     # Translation
     dx = (-5 if 'a' in keys else 0) + (+5 if 'd' in keys else 0)
     dy = (+5 if 'w' in keys else 0) + (-5 if 's' in keys else 0)
@@ -846,7 +948,6 @@ def onKeyHold(keys, modifiers=None):
         if hasattr(selected_group, 'move'):
             selected_group.move(Vec3(dx, dy, dz))
             obj_updated = True
-    
     # Scale
     dw = (-5 if 'A' in keys else 0) + (+5 if 'D' in keys else 0)
     dh = (+5 if 'W' in keys else 0) + (-5 if 'S' in keys else 0)
@@ -855,7 +956,6 @@ def onKeyHold(keys, modifiers=None):
         if hasattr(selected_group, 'scale'):
             selected_group.scale(Vec3(dw, dh, dd))
             obj_updated = True
-    
     # Rotation
     drx = (m.pi/180.0) * ((+5 if 'r' in keys else 0) + (-5 if 'f' in keys else 0))
     dry = (m.pi/180.0) * ((+5 if 'c' in keys else 0) + (-5 if 'v' in keys else 0))
@@ -867,6 +967,7 @@ def onKeyHold(keys, modifiers=None):
     
     if obj_updated:
         selected_object_info.update()
+        depth_layer.update(_objects, camera.cord, camera.rotation, _axis_group)
 
 def onKeyPress(keys, modifiers=None):
     input_info.set_keyboard(keys, modifiers)
@@ -895,7 +996,12 @@ def onKeyPress(keys, modifiers=None):
     # if '/' in keys:
     #     command = command_input()
     
-    if '`' in keys:
+    if 'g' in keys:
+        global SHOW_AXIS
+        SHOW_AXIS = not SHOW_AXIS
+        drawAxis()
+    
+    if 't' in keys:
         selected_group = get_selected_object('obj')
         if selected_group is None:
             return
@@ -906,7 +1012,7 @@ def onKeyPress(keys, modifiers=None):
         if hasattr(selected_group, 'reset_rotation'):
             selected_group.reset_rotation()
         selected_object_info.update()
-    if '[' in keys:
+    if 'b' in keys and 'tab' not in keys:   # WHY ALSO REACTS TO TAB?
         camera.reset()
         camera_info.update()
 
