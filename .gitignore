@@ -4,6 +4,7 @@ __pycache__/
 
 # Markdown
 CURSOR.md
+AGENTS.md
 
 # Virtual environments
 .venv/
