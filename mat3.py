@@ -883,15 +883,15 @@ class SelectedObjectInfo:
             self.label_rotation_rz.value = '-'
         else:
             self.label_type.value = str(obj_type) if obj_type is not None else '-'
-            self.label_position_x.value = str(float(obj.cord.x))
-            self.label_position_y.value = str(float(obj.cord.y))
-            self.label_position_z.value = str(float(obj.cord.z))
-            self.label_size_w.value = str(float(obj.size.x))
-            self.label_size_h.value = str(float(obj.size.y))
-            self.label_size_d.value = str(float(obj.size.z))
-            self.label_rotation_rx.value = str(float(obj.rotation.x)) + ' (' + str(round(obj.rotation.x * 180.0 / m.pi)) + 'º)'
-            self.label_rotation_ry.value = str(float(obj.rotation.y)) + ' (' + str(round(obj.rotation.y * 180.0 / m.pi)) + 'º)'
-            self.label_rotation_rz.value = str(float(obj.rotation.z)) + ' (' + str(round(obj.rotation.z * 180.0 / m.pi)) + 'º)'
+            self.label_position_x.value = str(obj.cord.x)
+            self.label_position_y.value = str(obj.cord.y)
+            self.label_position_z.value = str(obj.cord.z)
+            self.label_size_w.value = str(obj.size.x)
+            self.label_size_h.value = str(obj.size.y)
+            self.label_size_d.value = str(obj.size.z)
+            self.label_rotation_rx.value = str(obj.rotation.x) + ' (' + str(round(obj.rotation.x * 180.0 / m.pi)) + 'º)'
+            self.label_rotation_ry.value = str(obj.rotation.y) + ' (' + str(round(obj.rotation.y * 180.0 / m.pi)) + 'º)'
+            self.label_rotation_rz.value = str(obj.rotation.z) + ' (' + str(round(obj.rotation.z * 180.0 / m.pi)) + 'º)'
         self._anchor_all_labels()
 
 

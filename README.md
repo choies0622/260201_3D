@@ -1,6 +1,6 @@
 # #1 : 3D Modeling in CS class
 \>>> By. **Eun-Sung Choi**(David C.)  
-Proj. Started On `Feb 2, 2026`.  
+Proj. Started On `Feb 1, 2026`.  
 
 
 ## TO DO
@@ -9,8 +9,12 @@ Proj. Started On `Feb 2, 2026`.
 + [x] Keyboard Binding & Interface
 + [x] Rotation
 + [x] Movable Cam
-+ [ ] Depth & Layer
++ [x] Depth & Layer
++ [ ] Intuitive Cam Move
 + [ ] Additional Shapes
++ [ ] Add More Arguments
++ [ ] *(Optional)* Make It a **Library**
++ [ ] *(Optional)* Try To Make It Using **Quaternion**
 
 
 ## About CMU Graphics Library
