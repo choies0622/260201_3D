@@ -10,7 +10,7 @@ Proj. Started On `Feb 1, 2026`.
 + [x] Rotation
 + [x] Movable Cam
 + [x] Depth & Layer
-+ [ ] Intuitive Cam Move
++ [ ] ~~Intuitive Cam Move~~
 + [ ] Additional Shapes
 + [ ] Add More Arguments
 + [ ] *(Optional)* Make It a **Library**
