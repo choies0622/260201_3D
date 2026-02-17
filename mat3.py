@@ -8,6 +8,15 @@ from cmu_graphics import cmu_graphics as c  # c.run()
 CMU_RUN = True
 
 f = 250
+
+MIN_SIZE = 1e-6  # prevent size < 0
+
+def _clamp_size(v: float) -> float:
+    return round(v, 5) if v > MIN_SIZE else MIN_SIZE
+    # return round(max(MIN_SIZE, v), 5)
+def _clamp_vec3_size(v: Vec3) -> Vec3:
+    return Vec3(_clamp_size(v.x), _clamp_size(v.y), _clamp_size(v.z))
+
 screen_center = (200, 200)  # screen coord
 
 
@@ -33,7 +42,7 @@ class Mat3:
     def __matmul__(self, other):
         # Mat3 @ Vec3  (apply transform)
         if isinstance(other, Vec3):
-            x, y, z = other.x, other.y, other.z
+            x, y, z = v2s(other)
             return Vec3(
                 self.m[0][0]*x + self.m[0][1]*y + self.m[0][2]*z,
                 self.m[1][0]*x + self.m[1][1]*y + self.m[1][2]*z,
@@ -56,9 +65,15 @@ class Mat3:
 
         return NotImplemented
 
+def v2s(v: Vec3) -> tuple[float, float, float]:
+    return v.x, v.y, v.z
+def s2v(s: float) -> Vec3:
+    return Vec3(s, s, s)
+
+
 ### CAMERA
 cam_cord = Vec3(0, 0, -200)
-cam_rotation = Vec3(0, 0, 0)
+cam_rotation = s2v(0)
 
 class Camera:
     def __init__(self, cord: Vec3, rotation: Vec3):
@@ -140,7 +155,7 @@ def Rz(theta: float) -> Mat3:
     ))
 
 def rotateVerts(verts: list[Vec3], rotation: Vec3) -> list[Vec3]:
-    rx, ry, rz = rotation.x, rotation.y, rotation.z
+    rx, ry, rz = v2s(rotation)
     R = Rz(rz) @ Ry(ry) @ Rx(rx)    # Order matters
     return [R @ v for v in verts]
 
@@ -167,9 +182,9 @@ def projectToCamera(
     if cam_rotation is None:
         cam_rotation = globals()['cam_rotation']
     local = points - cam_cord
-    if cam_rotation == Vec3(0, 0, 0):
+    if cam_rotation == s2v(0):
         return local
-    rx, ry, rz = cam_rotation.x, cam_rotation.y, cam_rotation.z
+    rx, ry, rz = v2s(cam_rotation)
     # Inverse rotation to move world space into camera space
     R = Rx(-rx) @ Ry(-ry) @ Rz(-rz)
     return R @ local
@@ -330,7 +345,7 @@ def _cuboid_faces(
         Vec3(-w, -h, +d), Vec3(+w, -h, +d),
         Vec3(+w, +h, +d), Vec3(-w, +h, +d)
     ]
-    if rotation is not None and rotation != Vec3(0, 0, 0):
+    if rotation is not None and rotation != s2v(0):
         verts = rotateVerts(verts, rotation)
     verts = [v + cord for v in verts]
     
@@ -430,9 +445,9 @@ class Cuboid:
             screen_center = globals()['screen_center']
         self.cord = cord
         self._initial_cord = cord
-        self.size = size
-        self._initial_size = size
-        self.rotation = rotation if rotation is not None else Vec3(0, 0, 0)
+        self.size = _clamp_vec3_size(size)
+        self._initial_size = self.size
+        self.rotation = rotation if rotation is not None else s2v(0)
         self._initial_rotation = self.rotation
         self.cam_cord = cam_cord
         self.cam_rotation = cam_rotation
@@ -472,15 +487,136 @@ class Cuboid:
     
     # Scale
     def scale(self, delta: Vec3):
-        self.size = Vec3(
+        self.size = _clamp_vec3_size(Vec3(
             self.size.x + delta.x,
             self.size.y + delta.y,
             self.size.z + delta.z,
-        )
+        ))
         return self.redraw()
 
     def set_size(self, size: Vec3):
-        self.size = size
+        self.size = _clamp_vec3_size(size)
+        return self.redraw()
+    def reset_size(self):
+        self.size = self._initial_size
+        return self.redraw()
+
+    # Rotation (rad)
+    def rotate(self, delta: Vec3):
+        self.rotation = Vec3(
+            self.rotation.x + delta.x,
+            self.rotation.y + delta.y,
+            self.rotation.z + delta.z,
+        )
+        rx = 0 if abs(self.rotation.x) <= 1e-6 else self.rotation.x
+        ry = 0 if abs(self.rotation.y) <= 1e-6 else self.rotation.y
+        rz = 0 if abs(self.rotation.z) <= 1e-6 else self.rotation.z
+        rx = rx % (2 * m.pi)
+        ry = ry % (2 * m.pi)
+        rz = rz % (2 * m.pi)
+        self.rotation = Vec3(rx, ry, rz)
+        return self.redraw()
+
+    def set_rotation(self, rotation: Vec3):
+        self.rotation = rotation
+        return self.redraw()
+    def reset_rotation(self):
+        self.rotation = self._initial_rotation
+        return self.redraw()
+
+# Cube
+class Cube:
+    """
+    WORLD (x, y, z)
+
+    - redraw
+    - TRANSLATION
+        - move (delta: Vec3)
+        - set_cord (cord: Vec3)
+        - reset_cord
+    - SCALING
+        - scale (delta: Vec3)
+        - set_size (size: Vec3)
+        - reset_size
+    - ROTATION
+        - rotate (delta: Vec3)
+        - set_rotation (rotation: Vec3)
+        - reset_rotation
+    """
+    def __init__(
+        self,
+        cord: Vec3,
+        size: float,
+        rotation: Vec3 | None = None,
+        cam_cord: Vec3 | None = None,
+        cam_rotation: Vec3 | None = None,
+        screen_center: tuple[float, float] | None = None,
+    ):
+        if cam_cord is None:
+            cam_cord = globals()['cam_cord']
+        if cam_rotation is None:
+            cam_rotation = globals()['cam_rotation']
+        if screen_center is None:
+            screen_center = globals()['screen_center']
+        self.cord = cord
+        self._initial_cord = cord
+        s = _clamp_size(size)
+        self.size = s2v(s)
+        self._initial_size = self.size
+        self.rotation = rotation if rotation is not None else s2v(0)
+        self._initial_rotation = self.rotation
+        self.cam_cord = cam_cord
+        self.cam_rotation = cam_rotation
+        self.screen_center = screen_center
+        self.group = c.Group()
+        self.redraw()
+
+    def redraw(self):
+        faces = _cuboid_faces(
+            self.cord,
+            self.size,
+            self.rotation,
+            self.cam_cord,
+            self.cam_rotation,
+            self.screen_center
+        )
+        self.group.clear()
+        if faces is None:
+            self.group.visible = False
+            return self.group
+        self.group.visible = True
+        for face in faces:
+            self.group.add(face)
+        return self.group
+
+    # Translation
+    def move(self, delta: Vec3):
+        self.cord = self.cord + delta
+        return self.redraw()
+
+    def set_cord(self, cord: Vec3):
+        self.cord = cord
+        return self.redraw()
+    def reset_cord(self):
+        self.cord = self._initial_cord
+        return self.redraw()
+    
+    # Scale
+    def scale(self, delta: Vec3):
+        sigma = delta.x + delta.y + delta.z
+        self.size = _clamp_vec3_size(Vec3(
+            self.size.x + sigma,
+            self.size.y + sigma,
+            self.size.z + sigma,
+        ))
+        return self.redraw()
+        
+    def set_size(self, size: float | Vec3):
+        if isinstance(size, float):
+            s = _clamp_size(size)
+            self.size = s2v(s)
+        else:
+            self.size = _clamp_vec3_size(size)
         return self.redraw()
     def reset_size(self):
         self.size = self._initial_size
@@ -510,8 +646,13 @@ class Cuboid:
         return self.redraw()
 
 # Ellipsoid
-    # c.Arc(x, y, w, h, start, end, fill=None, border=None, borderWidth=1, opacity=100)
+    # c.Arc(x, y, w, h, startAngle, sweepAngle, visible=True)
+    # c.Oval(x, y, w, h, rotateAngle=0, align='center', visible=True)
+    # c.Circle(x, y, r, rotateAngle=0, visible=True)
 # Sphere
+# Cylinder
+# Cone
+# Torus
 
 
 class DepthLayerManager:
@@ -698,12 +839,11 @@ class CameraInfo:
         self.update()
 
     def _anchor_all_labels(self):
-        # position
-        self.label_camera_position_x.right = self.base_x - 5 # x
+        self.label_camera_position_x.right = self.base_x - 15 # x
         self.label_camera_position_x.top = self.base_y - 60
-        self.label_camera_position_y.right = self.base_x - 5 # y
+        self.label_camera_position_y.right = self.base_x - 15 # y
         self.label_camera_position_y.top = self.base_y - 50
-        self.label_camera_position_z.right = self.base_x - 5 # z
+        self.label_camera_position_z.right = self.base_x - 15 # z
         self.label_camera_position_z.top = self.base_y - 40
         # rotation
         self.label_camera_rotation_rx.right = self.base_x - 5 # rx
@@ -713,12 +853,12 @@ class CameraInfo:
         self.label_camera_rotation_rz.right = self.base_x - 5 # rz
         self.label_camera_rotation_rz.top = self.base_y
     def update(self):
-        self.label_camera_position_x.value = str(camera.cord.x)
-        self.label_camera_position_y.value = str(camera.cord.y)
-        self.label_camera_position_z.value = str(camera.cord.z)
-        self.label_camera_rotation_rx.value = str(camera.rotation.x) + ' (' + str(round(camera.rotation.x * 180.0 / m.pi)) + 'º)'
-        self.label_camera_rotation_ry.value = str(camera.rotation.y) + ' (' + str(round(camera.rotation.y * 180.0 / m.pi)) + 'º)'
-        self.label_camera_rotation_rz.value = str(camera.rotation.z) + ' (' + str(round(camera.rotation.z * 180.0 / m.pi)) + 'º)'
+        self.label_camera_position_x.value = str(float(camera.cord.x))
+        self.label_camera_position_y.value = str(float(camera.cord.y))
+        self.label_camera_position_z.value = str(float(camera.cord.z))
+        self.label_camera_rotation_rx.value = str(float(camera.rotation.x)) + '  | ' + str(float(round(camera.rotation.x * 180.0 / m.pi, 2))) + 'º'
+        self.label_camera_rotation_ry.value = str(float(camera.rotation.y)) + '  | ' + str(float(round(camera.rotation.y * 180.0 / m.pi, 2))) + 'º'
+        self.label_camera_rotation_rz.value = str(float(camera.rotation.z)) + '  | ' + str(float(round(camera.rotation.z * 180.0 / m.pi, 2))) + 'º'
         self._anchor_all_labels()
 
 class SelectedObjectInfo:
@@ -851,11 +991,11 @@ class SelectedObjectInfo:
         self.label_position_z.left = self.base_x + 5   # z
         self.label_position_z.top = self.base_y + 50
         # size
-        self.label_size_w.left = self.base_x + 35   # w
+        self.label_size_w.left = self.base_x + 45   # w
         self.label_size_w.top = self.base_y + 30
-        self.label_size_h.left = self.base_x + 35   # h
+        self.label_size_h.left = self.base_x + 45   # h
         self.label_size_h.top = self.base_y + 40
-        self.label_size_d.left = self.base_x + 35   # d
+        self.label_size_d.left = self.base_x + 45   # d
         self.label_size_d.top = self.base_y + 50
         # rotation
         self.label_rotation_rx.left = self.base_x + 5   # rx
@@ -883,26 +1023,28 @@ class SelectedObjectInfo:
             self.label_rotation_rz.value = '-'
         else:
             self.label_type.value = str(obj_type) if obj_type is not None else '-'
-            self.label_position_x.value = str(obj.cord.x)
-            self.label_position_y.value = str(obj.cord.y)
-            self.label_position_z.value = str(obj.cord.z)
-            self.label_size_w.value = str(obj.size.x)
-            self.label_size_h.value = str(obj.size.y)
-            self.label_size_d.value = str(obj.size.z)
-            self.label_rotation_rx.value = str(obj.rotation.x) + ' (' + str(round(obj.rotation.x * 180.0 / m.pi)) + 'º)'
-            self.label_rotation_ry.value = str(obj.rotation.y) + ' (' + str(round(obj.rotation.y * 180.0 / m.pi)) + 'º)'
-            self.label_rotation_rz.value = str(obj.rotation.z) + ' (' + str(round(obj.rotation.z * 180.0 / m.pi)) + 'º)'
+            self.label_position_x.value = str(float(obj.cord.x))
+            self.label_position_y.value = str(float(obj.cord.y))
+            self.label_position_z.value = str(float(obj.cord.z))
+            self.label_size_w.value = str(float(obj.size.x))
+            self.label_size_h.value = str(float(obj.size.y))
+            self.label_size_d.value = str(float(obj.size.z))
+            self.label_rotation_rx.value = str(float(obj.rotation.x)) + '  | ' + str(float(round(obj.rotation.x * 180.0 / m.pi, 2))) + 'º'
+            self.label_rotation_ry.value = str(float(obj.rotation.y)) + '  | ' + str(float(round(obj.rotation.y * 180.0 / m.pi, 2))) + 'º'
+            self.label_rotation_rz.value = str(float(obj.rotation.z)) + '  | ' + str(float(round(obj.rotation.z * 180.0 / m.pi, 2))) + 'º'
         self._anchor_all_labels()
 
 
 ### GRAPHICS
 drawAxis()
 depth_layer = DepthLayerManager()
-cuboid1 = Cuboid(Vec3(0, 0, 0), Vec3(50, 50, 50))
-# cuboid2 = Cuboid(Vec3(0, 0, 200), Vec3(50, 50, 50))
-# cuboid_which_is_named_very_long = Cuboid(Vec3(0, 0, 200), Vec3(50, 50, 50))
+cuboid1 = Cuboid(s2v(0), s2v(50))
+cube1 = Cube(s2v(0), 75)
+# cuboid2 = Cuboid(Vec3(0, 0, 200), s2v(50))
+# cuboid_which_is_named_very_long = Cuboid(Vec3(0, 0, 200), s2v(50))
 
 register_object(cuboid1, 'cuboid1')
+register_object(cube1, 'cube1')
 # register_object(cuboid2, 'cuboid2')
 # register_object(cuboid_which_is_named_very_long, 'cuboid_which_is_named_very_long')
 
@@ -976,13 +1118,13 @@ def onKeyPress(keys, modifiers=None):
         select_next_object()
         selected_object_info.update()
     
-    if 'backspace' in keys:
+    if 'backspace' in keys and 'tab' not in keys:   # WHY ALSO REACTS TO TAB? x2
         clearObject(get_selected_object('name'))
         select_next_object()
         selected_object_info.update()
     
     if '+' in keys:
-        new_obj = Cuboid(Vec3(0, 0, 0), Vec3(50, 50, 50))
+        new_obj = Cuboid(s2v(0), s2v(50))
         base_name = 'cuboid'
         index = 1
         new_name = f'{base_name}{index}'
