@@ -652,7 +652,7 @@ class Cube:
 # Sphere
 # Cylinder
 # Cone
-# Torus
+# Pyramid
 
 
 class DepthLayerManager:
