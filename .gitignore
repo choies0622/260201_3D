@@ -2,9 +2,8 @@
 __pycache__/
 *.py[cod]
 
-# Markdown
-CURSOR.md
-AGENTS.md
+# Cursor
+.cursor/
 
 # Virtual environments
 .venv/
