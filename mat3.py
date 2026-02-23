@@ -181,7 +181,8 @@ class Camera:
             if hasattr(obj, 'redraw'):
                 obj.redraw()
         drawAxis()
-        depth_layer.update(_objects, self.cord, self.rotation, _axis_group)
+        top = [g.group for g in (globals().get('selected_object_info'), globals().get('input_info'), globals().get('camera_info')) if g is not None and hasattr(g, 'group')]
+        depth_layer.update(_objects, self.cord, self.rotation, _axis_group, top_groups=top or None)
 
     def move(self, delta: Vec3):
         self.cord = self.cord + delta
@@ -253,10 +254,10 @@ def rotateVerts(verts: list[Vec3], rotation: Vec3) -> list[Vec3]:
 # 또, 기존의 cam 변수는: 화면 좌표계 기준에서의 중앙을 의미했으나, 이를 카메라 좌표계의 좌표로 바꿔야됨.
 # 따라서, 기존의 cam 변수에서 중앙을 의미하는 부분과 실질적인 카메라 좌표를 의미하는 부분을 분기할 필요성 제기.
 # 기존의 중앙을 의미하는 부분은 screen_center 변수로 따로 정의.
-# 이후, projectToCamera 함수를 새로 정의하여 카메라 좌표계로 변환, 이후 projectToScreen 함수로 화면 좌표계로 변환.
+# 이후, projectWorldToCamera 함수를 새로 정의하여 카메라 좌표계로 변환, 이후 projectCameraToScreen 함수로 화면 좌표계로 변환.
 # cam_cord, cam_rotation 변수를 새로 정의.
 
-def projectToCamera(
+def projectWorldToCamera(
     points: Vec3,
     cam_cord: Vec3 | None = None,
     cam_rotation: Vec3 | None = None,
@@ -275,7 +276,8 @@ def projectToCamera(
     # Inverse rotation to move world space into camera space
     R = Rx(-rx) @ Ry(-ry) @ Rz(-rz)
     return R @ local
-def projectToScreen(
+
+def projectCameraToScreen(
     points: Vec3,
     screen_center: tuple[float, float] | None = None,
 ) -> tuple[float, float] | None:
@@ -295,6 +297,15 @@ def projectToScreen(
     u = cx + f * (points.x / points.z)
     v = cy - f * (points.y / points.z)
     return (u, v)
+
+def _rotateWorldToCamera(v: Vec3, cam_rotation: Vec3) -> Vec3:
+    """Rotate a direction vector from world to camera space (no translation)."""
+    if cam_rotation == s2v(0):
+        return v
+    rx, ry, rz = v2s(cam_rotation)
+    R = Rx(-rx) @ Ry(-ry) @ Rz(-rz)
+    return R @ v
+
 
 def _clip_segment_to_near_plane(
     p0: Vec3, p1: Vec3, near: float = 1e-6,
@@ -319,6 +330,36 @@ def _clip_segment_to_near_plane(
         return (p0, clipped)
     return (clipped, p1)
 
+def _oval_params_from_camera(
+    cord_cam: Vec3,
+    s_cam: Vec3,
+    t_cam: Vec3,
+    screen_center: tuple[float, float] | None = None,
+) -> tuple[float, float, float, float, float] | None:
+    """Camera-space oval data -> (u, v, width, height, angle_deg) or None."""
+    if screen_center is None:
+        screen_center = globals()['screen_center']
+    if cord_cam.z < NEAR_PLANE:
+        return None
+    scr = projectCameraToScreen(cord_cam, screen_center)
+    if scr is None:
+        return None
+    u, v = scr
+    k = f / cord_cam.z
+    ds = Vec2(k * s_cam.x, -k * s_cam.y)
+    dt = Vec2(k * t_cam.x, -k * t_cam.y)
+    gram = Mat2((
+        (ds.dot(ds), ds.dot(dt)),
+        (ds.dot(dt), dt.dot(dt)),
+    ))
+    (lam1, v1), (lam2, _) = gram.eigen()
+    semi_major = m.sqrt(max(0.0, lam1))
+    semi_minor = m.sqrt(max(0.0, lam2))
+    if semi_major < 1e-6:
+        return None
+    angle_deg = m.degrees(m.atan2(v1.y, v1.x))
+    return (u, v, 2.0 * semi_major, 2.0 * semi_minor, angle_deg)
+
 
 ### 3D PRIMITIVES
 def Line(
@@ -334,13 +375,13 @@ def Line(
         cam_rotation = globals()['cam_rotation']
     if screen_center is None:
         screen_center = globals()['screen_center']
-    p0_cam = projectToCamera(p0, cam_cord, cam_rotation)
-    p1_cam = projectToCamera(p1, cam_cord, cam_rotation)
+    p0_cam = projectWorldToCamera(p0, cam_cord, cam_rotation)
+    p1_cam = projectWorldToCamera(p1, cam_cord, cam_rotation)
     clipped = _clip_segment_to_near_plane(p0_cam, p1_cam)
     if clipped is None:
         return None
-    q0 = projectToScreen(clipped[0], screen_center)
-    q1 = projectToScreen(clipped[1], screen_center)
+    q0 = projectCameraToScreen(clipped[0], screen_center)
+    q1 = projectCameraToScreen(clipped[1], screen_center)
     if q0 is None or q1 is None:
         return None
     try:
@@ -363,10 +404,10 @@ def Polygon(
         screen_center = globals()['screen_center']
     points = []
     for v in verts:
-        cam_v = projectToCamera(v, cam_cord, cam_rotation)
+        cam_v = projectWorldToCamera(v, cam_cord, cam_rotation)
         if cam_v.z < NEAR_PLANE:
             return None
-        scr = projectToScreen(cam_v, screen_center)
+        scr = projectCameraToScreen(cam_v, screen_center)
         if scr is None:
             return None
         points.append(scr)
@@ -378,44 +419,6 @@ def Polygon(
         return c.Polygon(*flat, **kwargs)
     except:
         return None
-
-def _rotateToCam(v: Vec3, cam_rotation: Vec3) -> Vec3:
-    """Rotate a direction vector from world to camera space (no translation)."""
-    if cam_rotation == s2v(0):
-        return v
-    rx, ry, rz = v2s(cam_rotation)
-    R = Rx(-rx) @ Ry(-ry) @ Rz(-rz)
-    return R @ v
-
-def _oval_params_from_cam(
-    cord_cam: Vec3,
-    s_cam: Vec3,
-    t_cam: Vec3,
-    screen_center: tuple[float, float] | None = None,
-) -> tuple[float, float, float, float, float] | None:
-    """Camera-space oval data -> (u, v, width, height, angle_deg) or None."""
-    if screen_center is None:
-        screen_center = globals()['screen_center']
-    if cord_cam.z < NEAR_PLANE:
-        return None
-    scr = projectToScreen(cord_cam, screen_center)
-    if scr is None:
-        return None
-    u, v = scr
-    k = f / cord_cam.z
-    ds = Vec2(k * s_cam.x, -k * s_cam.y)
-    dt = Vec2(k * t_cam.x, -k * t_cam.y)
-    gram = Mat2((
-        (ds.dot(ds), ds.dot(dt)),
-        (ds.dot(dt), dt.dot(dt)),
-    ))
-    (lam1, v1), (lam2, _) = gram.eigen()
-    semi_major = m.sqrt(max(0.0, lam1))
-    semi_minor = m.sqrt(max(0.0, lam2))
-    if semi_major < 1e-6:
-        return None
-    angle_deg = m.degrees(m.atan2(v1.y, v1.x))
-    return (u, v, 2.0 * semi_major, 2.0 * semi_minor, angle_deg)
 
 def Oval(
     cord: Vec3,
@@ -432,10 +435,10 @@ def Oval(
         cam_rotation = globals()['cam_rotation']
     if screen_center is None:
         screen_center = globals()['screen_center']
-    cord_cam = projectToCamera(cord, cam_cord, cam_rotation)
-    s_cam = _rotateToCam(s, cam_rotation)
-    t_cam = _rotateToCam(t, cam_rotation)
-    params = _oval_params_from_cam(cord_cam, s_cam, t_cam, screen_center)
+    cord_cam = projectWorldToCamera(cord, cam_cord, cam_rotation)
+    s_cam = _rotateWorldToCamera(s, cam_rotation)
+    t_cam = _rotateWorldToCamera(t, cam_rotation)
+    params = _oval_params_from_camera(cord_cam, s_cam, t_cam, screen_center)
     if params is None:
         return None
     u, v, w, h, angle_deg = params
@@ -447,6 +450,19 @@ def Oval(
         )
     except:
         return None
+
+
+### ARGUMENTS
+_GROUP_KEYS = {'visible', 'opacity'}
+
+def _split_kwargs(kwargs: dict) -> tuple[dict, dict]:
+    group_kw = {k: v for k, v in kwargs.items() if k in _GROUP_KEYS}
+    child_kw = {k: v for k, v in kwargs.items() if k not in _GROUP_KEYS}
+    return group_kw, child_kw
+
+def _apply_group_kwargs(group, group_kw: dict):
+    for k, v in group_kw.items():
+        setattr(group, k, v)
 
 
 ### MANAGEMENT
@@ -534,7 +550,8 @@ def _cuboid_faces(
     cam_cord: Vec3 | None = None,
     cam_rotation: Vec3 | None = None,
     screen_center: tuple[float, float] | None = None,
-    fill: list[str, str, str, str, str, str] | None = ['lightblue', 'lightblue', 'lightgreen', 'lightgreen', 'lightyellow', 'lightyellow'],
+    fill: list | str | None = ['lightblue', 'lightblue', 'lightgreen', 'lightgreen', 'lightyellow', 'lightyellow'],
+    **kwargs,
 ) -> list[c.Polygon] | None:
     if cam_cord is None:
         cam_cord = globals()['cam_cord']
@@ -542,6 +559,12 @@ def _cuboid_faces(
         cam_rotation = globals()['cam_rotation']
     if screen_center is None:
         screen_center = globals()['screen_center']
+
+    defaults = dict(border='black', borderWidth=1, opacity=50)
+    defaults.update(kwargs)
+
+    if isinstance(fill, str) or fill is None:
+        fill = [fill] * 6
 
     w = size.x if size.x > 0 else 1e-6
     h = size.y if size.y > 0 else 1e-6
@@ -570,7 +593,7 @@ def _cuboid_faces(
         face_verts = [verts[i] for i in fi]
         poly = Polygon(
             face_verts, cam_cord, cam_rotation, screen_center,
-            fill=fill[idx], border='black', borderWidth=1, opacity=50,
+            fill=fill[idx], **defaults,
         )
         if poly is None:
             return None
@@ -603,6 +626,7 @@ class Cuboid:
         cam_cord: Vec3 | None = None,
         cam_rotation: Vec3 | None = None,
         screen_center: tuple[float, float] | None = None,
+        **kwargs,
     ):
         if cam_cord is None:
             cam_cord = globals()['cam_cord']
@@ -619,10 +643,14 @@ class Cuboid:
         self.cam_cord = cam_cord
         self.cam_rotation = cam_rotation
         self.screen_center = screen_center
+        self.kwargs = kwargs
+        group_kw, _ = _split_kwargs(kwargs)
         self.group = c.Group()
+        _apply_group_kwargs(self.group, group_kw)
         self.redraw()
 
     def redraw(self):
+        _, child_kw = _split_kwargs(self.kwargs)
         faces = _cuboid_faces(
             self.cord,
             self.size,
@@ -630,6 +658,7 @@ class Cuboid:
             self.cam_cord,
             self.cam_rotation,
             self.screen_center,
+            **child_kw,
         )
         self.group.clear()
         if faces is None:
@@ -737,10 +766,14 @@ class Cube:
         self.cam_cord = cam_cord
         self.cam_rotation = cam_rotation
         self.screen_center = screen_center
+        self.kwargs = kwargs
+        group_kw, _ = _split_kwargs(kwargs)
         self.group = c.Group()
+        _apply_group_kwargs(self.group, group_kw)
         self.redraw()
 
     def redraw(self):
+        _, child_kw = _split_kwargs(self.kwargs)
         faces = _cuboid_faces(
             self.cord,
             self.size,
@@ -748,7 +781,7 @@ class Cube:
             self.cam_cord,
             self.cam_rotation,
             self.screen_center,
-            **self.group.kwargs,
+            **child_kw,
         )
         self.group.clear()
         if faces is None:
@@ -855,8 +888,12 @@ def _sphere_ovals(
     cord: Vec3, radius: float, rotation: Vec3,
     cam_cord: Vec3, cam_rotation: Vec3,
     screen_center: tuple[float, float],
+    **kwargs,
 ) -> list | None:
     ovals = []
+    gc_defaults = dict(fill=None, borderWidth=1, opacity=50)
+    gc_defaults.update(kwargs)
+
     gc_pairs = [
         (Vec3(radius, 0, 0), Vec3(0, radius, 0), 'blue'),   # XY plane (normal Z)
         (Vec3(radius, 0, 0), Vec3(0, 0, radius), 'green'),  # XZ plane (normal Y)
@@ -867,27 +904,30 @@ def _sphere_ovals(
             s_rot, t_rot = rotateVerts([s_local, t_local], rotation)
         else:
             s_rot, t_rot = s_local, t_local
+        gc_kw = dict(gc_defaults)
+        gc_kw.setdefault('border', color)
         oval = Oval(
             cord, s_rot, t_rot,
             cam_cord, cam_rotation, screen_center,
-            fill=None, border=color, borderWidth=1, opacity=50,
+            **gc_kw,
         )
         if oval is not None:
             ovals.append(oval)
     # Silhouette
-    cord_cam = projectToCamera(cord, cam_cord, cam_rotation)
+    cord_cam = projectWorldToCamera(cord, cam_cord, cam_rotation)
     sil = _sphere_silhouette(cord_cam, radius)
     if sil is not None:
         sil_center, sil_s, sil_t = sil
-        params = _oval_params_from_cam(sil_center, sil_s, sil_t, screen_center)
+        params = _oval_params_from_camera(sil_center, sil_s, sil_t, screen_center)
         if params is not None:
             u, v, w, h, angle_deg = params
+            sil_defaults = dict(fill='lightBlue', border='black', borderWidth=1, opacity=30)
+            sil_defaults.update(kwargs)
             try:
                 sil_oval = c.Oval(
                     u, v, w, h,
                     rotateAngle=angle_deg,
-                    fill='lightBlue', border='black',
-                    borderWidth=1, opacity=30,
+                    **sil_defaults,
                 )
                 ovals.insert(0, sil_oval)
             except:
@@ -938,14 +978,18 @@ class Sphere:
         self.cam_cord = cam_cord
         self.cam_rotation = cam_rotation
         self.screen_center = screen_center
-        self.group = c.Group(**kwargs)
+        self.kwargs = kwargs
+        group_kw, _ = _split_kwargs(kwargs)
+        self.group = c.Group()
+        _apply_group_kwargs(self.group, group_kw)
         self.redraw()
 
     def redraw(self):
+        _, child_kw = _split_kwargs(self.kwargs)
         ovals = _sphere_ovals(
             self.cord, self.size.x / 2.0, self.rotation,
             self.cam_cord, self.cam_rotation, self.screen_center,
-            **self.group.kwargs,
+            **child_kw,
         )
         self.group.clear()
         if ovals is None:
@@ -1028,7 +1072,7 @@ class DepthLayerManager:
         ref = getattr(obj, 'cord', None)
         if ref is None:
             return float('inf')
-        p = projectToCamera(ref, cam_cord, cam_rotation)
+        p = projectWorldToCamera(ref, cam_cord, cam_rotation)
         return p.z if p.z > 0 else float('inf')
 
     def update(
@@ -1037,6 +1081,7 @@ class DepthLayerManager:
         cam_cord: Vec3,
         cam_rotation: Vec3,
         axis_group: c.Group | None = None,
+        top_groups: list[c.Group] | None = None,
     ) -> None:
         entries = [(n, e['obj']) for n, e in obj_registry.items()]
         # drawable: obj.group if exists, else obj itself (shape/Group auto in app.group per CMU docs)
@@ -1057,6 +1102,10 @@ class DepthLayerManager:
             drawable_get(obj).toFront()
         if axis_group is not None and getattr(axis_group, 'visible', False):
             axis_group.toBack()
+        if top_groups:
+            for g in top_groups:
+                if g is not None and hasattr(g, 'toFront'):
+                    g.toFront()
 
 
 ### UI
@@ -1329,6 +1378,7 @@ class SelectedObjectInfo:
             font='monospace',
             opacity=80,
         )
+        self._kwargs_labels: list[c.Label] = []
         self.group = c.Group(
             self.label_selected,
             self.label_type,
@@ -1350,7 +1400,7 @@ class SelectedObjectInfo:
         self.label_type.left = self.base_x + 3
         self.label_type.top = self.base_y + 16
         # position
-        self.label_position_x.left = self.base_x + 5  # x
+        self.label_position_x.left = self.base_x + 5    # x
         self.label_position_x.top = self.base_y + 30
         self.label_position_y.left = self.base_x + 5   # y
         self.label_position_y.top = self.base_y + 40
@@ -1370,6 +1420,24 @@ class SelectedObjectInfo:
         self.label_rotation_ry.top = self.base_y + 80
         self.label_rotation_rz.left = self.base_x + 5   # rz
         self.label_rotation_rz.top = self.base_y + 90
+        # kwargs
+        for i, lbl in enumerate(self._kwargs_labels):
+            lbl.left = self.base_x + 5
+            lbl.top = self.base_y + 110 + i * 9
+
+    def _rebuild_kwargs_labels(self, kwargs: dict):
+        for lbl in self._kwargs_labels:
+            self.group.remove(lbl)
+        self._kwargs_labels.clear()
+        for key, val in kwargs.items():
+            lbl = c.Label(
+                f'{key}: {val}',
+                self.base_x, self.base_y,
+                fill='darkCyan', align='left', bold=True,
+                size=9, font='monospace', opacity=80,
+            )
+            self._kwargs_labels.append(lbl)
+            self.group.add(lbl)
 
     def update(self):
         obj = get_selected_object('obj')
@@ -1387,6 +1455,7 @@ class SelectedObjectInfo:
             self.label_rotation_rx.value = '-'
             self.label_rotation_ry.value = '-'
             self.label_rotation_rz.value = '-'
+            self._rebuild_kwargs_labels({})
         else:
             self.label_type.value = str(obj_type) if obj_type is not None else '-'
             self.label_position_x.value = str(float(obj.cord.x))
@@ -1398,6 +1467,7 @@ class SelectedObjectInfo:
             self.label_rotation_rx.value = str(float(obj.rotation.x)) + '  | ' + str(float(round(obj.rotation.x * 180.0 / m.pi, 2))) + 'º'
             self.label_rotation_ry.value = str(float(obj.rotation.y)) + '  | ' + str(float(round(obj.rotation.y * 180.0 / m.pi, 2))) + 'º'
             self.label_rotation_rz.value = str(float(obj.rotation.z)) + '  | ' + str(float(round(obj.rotation.z * 180.0 / m.pi, 2))) + 'º'
+            self._rebuild_kwargs_labels(getattr(obj, 'kwargs', {}))
         self._anchor_all_labels()
 
 
@@ -1405,7 +1475,7 @@ class SelectedObjectInfo:
 drawAxis()
 depth_layer = DepthLayerManager()
 cuboid1 = Cuboid(s2v(0), s2v(50))
-cube1 = Cube(s2v(0), 50)
+cube1 = Cube(s2v(0), 50, fill='salmon', border='crimson', opacity=70)
 sphere1 = Sphere(Vec3(0, 0, 0), 50)
 # cuboid2 = Cuboid(Vec3(0, 0, 200), s2v(50))
 # cuboid_which_is_named_very_long = Cuboid(Vec3(0, 0, 200), s2v(50))
@@ -1419,6 +1489,8 @@ register_object(sphere1, 'sphere1')
 selected_object_info = SelectedObjectInfo()
 input_info = InputInfo()
 camera_info = CameraInfo()
+for g in (selected_object_info.group, input_info.group, camera_info.group):
+    g.toFront()
 
 
 ### EVENTS
@@ -1477,7 +1549,8 @@ def onKeyHold(keys, modifiers=None):
     
     if obj_updated:
         selected_object_info.update()
-        depth_layer.update(_objects, camera.cord, camera.rotation, _axis_group)
+        depth_layer.update(_objects, camera.cord, camera.rotation, _axis_group,
+            top_groups=[selected_object_info.group, input_info.group, camera_info.group])
 
 def onKeyPress(keys, modifiers=None):
     input_info.set_keyboard(keys, modifiers)
