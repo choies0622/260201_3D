@@ -692,6 +692,7 @@ class Cuboid:
         return self.redraw()
 
 # Cube
+# fill='black', border=None, borderWidth=2, opacity=100, rotateAngle=0, dashes=False, align='center', visible=True
 class Cube:
     """
     WORLD (x, y, z)
@@ -718,6 +719,7 @@ class Cube:
         cam_cord: Vec3 | None = None,
         cam_rotation: Vec3 | None = None,
         screen_center: tuple[float, float] | None = None,
+        **kwargs,
     ):
         if cam_cord is None:
             cam_cord = globals()['cam_cord']
@@ -746,6 +748,7 @@ class Cube:
             self.cam_cord,
             self.cam_rotation,
             self.screen_center,
+            **self.group.kwargs,
         )
         self.group.clear()
         if faces is None:
@@ -917,6 +920,7 @@ class Sphere:
         cam_cord: Vec3 | None = None,
         cam_rotation: Vec3 | None = None,
         screen_center: tuple[float, float] | None = None,
+        **kwargs,
     ):
         if cam_cord is None:
             cam_cord = globals()['cam_cord']
@@ -934,13 +938,14 @@ class Sphere:
         self.cam_cord = cam_cord
         self.cam_rotation = cam_rotation
         self.screen_center = screen_center
-        self.group = c.Group()
+        self.group = c.Group(**kwargs)
         self.redraw()
 
     def redraw(self):
         ovals = _sphere_ovals(
             self.cord, self.size.x / 2.0, self.rotation,
             self.cam_cord, self.cam_rotation, self.screen_center,
+            **self.group.kwargs,
         )
         self.group.clear()
         if ovals is None:
