@@ -1,8 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import math as m
-# from cmu_graphics import *  # cmu general
-from cmu_graphics import cmu_graphics as c  # c.run()
+from cmu_graphics import cmu_graphics as c  # CMU GENERAL
 
 
 CMU_RUN = True
@@ -10,6 +9,7 @@ CMU_RUN = True
 f = 250
 
 MIN_SIZE = 1e-6  # prevent size < 0
+NEAR_PLANE = 1.0  # prevent extreme projections when z is near 0
 
 def _clamp_size(v: float) -> float:
     return round(v, 5) if v > MIN_SIZE else MIN_SIZE
@@ -65,6 +65,77 @@ class Mat3:
 
         return NotImplemented
 
+@dataclass(frozen=True)
+class Vec2:
+    x: float
+    y: float
+
+    def __add__(self, other: Vec2) -> Vec2:
+        return Vec2(self.x + other.x, self.y + other.y)
+
+    def __sub__(self, other: Vec2) -> Vec2:
+        return Vec2(self.x - other.x, self.y - other.y)
+
+    def dot(self, other: Vec2) -> float:
+        return self.x * other.x + self.y * other.y
+
+    def norm(self) -> float:
+        return m.sqrt(self.x * self.x + self.y * self.y)
+
+@dataclass(frozen=True)
+class Mat2:
+    m: tuple[tuple[float, float],
+             tuple[float, float]]
+
+    def __matmul__(self, other):
+        # Mat2 @ Vec2
+        if isinstance(other, Vec2):
+            return Vec2(
+                self.m[0][0] * other.x + self.m[0][1] * other.y,
+                self.m[1][0] * other.x + self.m[1][1] * other.y,
+            )
+
+        # Mat2 @ Mat2
+        if isinstance(other, Mat2):
+            A, B = self.m, other.m
+
+            def cell(i, j):
+                return A[i][0]*B[0][j] + A[i][1]*B[1][j]
+
+            return Mat2((
+                (cell(0, 0), cell(0, 1)),
+                (cell(1, 0), cell(1, 1)),
+            ))
+
+        return NotImplemented
+
+    def eigen(self) -> tuple[tuple[float, Vec2], tuple[float, Vec2]]:
+        """Eigenvalues/eigenvectors of a 2x2 symmetric matrix.
+        Returns ((lambda1, v1), (lambda2, v2)) with lambda1 >= lambda2."""
+        a, b = self.m[0]
+        _, d = self.m[1]
+        tr = a + d
+        det = a * d - b * b
+        disc = m.sqrt(max(0.0, tr * tr - 4.0 * det))
+        lam1 = (tr + disc) / 2.0
+        lam2 = (tr - disc) / 2.0
+        if abs(b) > 1e-12:
+            v1 = Vec2(lam1 - d, b)
+            v2 = Vec2(lam2 - d, b)
+        elif abs(a - d) > 1e-12:
+            v1 = Vec2(1.0, 0.0) if a >= d else Vec2(0.0, 1.0)
+            v2 = Vec2(0.0, 1.0) if a >= d else Vec2(1.0, 0.0)
+        else:
+            v1 = Vec2(1.0, 0.0)
+            v2 = Vec2(0.0, 1.0)
+        len1 = v1.norm()
+        len2 = v2.norm()
+        if len1 > 1e-12:
+            v1 = Vec2(v1.x / len1, v1.y / len1)
+        if len2 > 1e-12:
+            v2 = Vec2(v2.x / len2, v2.y / len2)
+        return ((lam1, v1), (lam2, v2))
+
 def v2s(v: Vec3) -> tuple[float, float, float]:
     return v.x, v.y, v.z
 def s2v(s: float) -> Vec3:
@@ -76,6 +147,18 @@ cam_cord = Vec3(0, 0, -200)
 cam_rotation = s2v(0)
 
 class Camera:
+    """
+    CAMARA (p, q, r)
+
+    - TRANSLATION
+        - move (delta: Vec3)
+        - set_cord (cord: Vec3)
+        - reset_cord
+    - ROTATION
+        - rotate (delta: Vec3)
+        - set_rotation (rotation: Vec3)
+        - reset_rotation
+    """
     def __init__(self, cord: Vec3, rotation: Vec3):
         self.cord = cord
         self.rotation = rotation
@@ -121,8 +204,12 @@ class Camera:
         self._sync_globals()
         self._sync_objects()
 
-    def reset(self):
+    def reset_cord(self):
         self.cord = self._initial_cord
+        self._sync_globals()
+        self._sync_objects()
+    
+    def reset_rotation(self):
         self.rotation = self._initial_rotation
         self._sync_globals()
         self._sync_objects()
@@ -172,7 +259,7 @@ def rotateVerts(verts: list[Vec3], rotation: Vec3) -> list[Vec3]:
 def projectToCamera(
     points: Vec3,
     cam_cord: Vec3 | None = None,
-    cam_rotation: Vec3 | None = None
+    cam_rotation: Vec3 | None = None,
 ) -> Vec3:
     """
     WORLD COORD SYS: x, y, z  ->  CAMERA COORD SYS: p, q, r
@@ -190,7 +277,7 @@ def projectToCamera(
     return R @ local
 def projectToScreen(
     points: Vec3,
-    screen_center: tuple[float, float] | None = None
+    screen_center: tuple[float, float] | None = None,
 ) -> tuple[float, float] | None:
     """
     CAMERA COORD SYS: p, q, r  ->  SCREEN COORD SYS: u, v
@@ -210,7 +297,7 @@ def projectToScreen(
     return (u, v)
 
 def _clip_segment_to_near_plane(
-    p0: Vec3, p1: Vec3, near: float = 1e-6
+    p0: Vec3, p1: Vec3, near: float = 1e-6,
 ) -> tuple[Vec3, Vec3] | None:
     """
     Clip a line segment (in camera space) to the near plane.
@@ -231,6 +318,135 @@ def _clip_segment_to_near_plane(
     if z0 > near:
         return (p0, clipped)
     return (clipped, p1)
+
+
+### 3D PRIMITIVES
+def Line(
+    p0: Vec3, p1: Vec3,
+    cam_cord: Vec3 | None = None,
+    cam_rotation: Vec3 | None = None,
+    screen_center: tuple[float, float] | None = None,
+    **kwargs,
+) -> c.Line | None:
+    if cam_cord is None:
+        cam_cord = globals()['cam_cord']
+    if cam_rotation is None:
+        cam_rotation = globals()['cam_rotation']
+    if screen_center is None:
+        screen_center = globals()['screen_center']
+    p0_cam = projectToCamera(p0, cam_cord, cam_rotation)
+    p1_cam = projectToCamera(p1, cam_cord, cam_rotation)
+    clipped = _clip_segment_to_near_plane(p0_cam, p1_cam)
+    if clipped is None:
+        return None
+    q0 = projectToScreen(clipped[0], screen_center)
+    q1 = projectToScreen(clipped[1], screen_center)
+    if q0 is None or q1 is None:
+        return None
+    try:
+        return c.Line(q0[0], q0[1], q1[0], q1[1], **kwargs)
+    except:
+        return None
+
+def Polygon(
+    verts: list[Vec3],
+    cam_cord: Vec3 | None = None,
+    cam_rotation: Vec3 | None = None,
+    screen_center: tuple[float, float] | None = None,
+    **kwargs,
+) -> c.Polygon | None:
+    if cam_cord is None:
+        cam_cord = globals()['cam_cord']
+    if cam_rotation is None:
+        cam_rotation = globals()['cam_rotation']
+    if screen_center is None:
+        screen_center = globals()['screen_center']
+    points = []
+    for v in verts:
+        cam_v = projectToCamera(v, cam_cord, cam_rotation)
+        if cam_v.z < NEAR_PLANE:
+            return None
+        scr = projectToScreen(cam_v, screen_center)
+        if scr is None:
+            return None
+        points.append(scr)
+    flat = []
+    for u, v in points:
+        flat.append(u)
+        flat.append(v)
+    try:
+        return c.Polygon(*flat, **kwargs)
+    except:
+        return None
+
+def _rotateToCam(v: Vec3, cam_rotation: Vec3) -> Vec3:
+    """Rotate a direction vector from world to camera space (no translation)."""
+    if cam_rotation == s2v(0):
+        return v
+    rx, ry, rz = v2s(cam_rotation)
+    R = Rx(-rx) @ Ry(-ry) @ Rz(-rz)
+    return R @ v
+
+def _oval_params_from_cam(
+    cord_cam: Vec3,
+    s_cam: Vec3,
+    t_cam: Vec3,
+    screen_center: tuple[float, float] | None = None,
+) -> tuple[float, float, float, float, float] | None:
+    """Camera-space oval data -> (u, v, width, height, angle_deg) or None."""
+    if screen_center is None:
+        screen_center = globals()['screen_center']
+    if cord_cam.z < NEAR_PLANE:
+        return None
+    scr = projectToScreen(cord_cam, screen_center)
+    if scr is None:
+        return None
+    u, v = scr
+    k = f / cord_cam.z
+    ds = Vec2(k * s_cam.x, -k * s_cam.y)
+    dt = Vec2(k * t_cam.x, -k * t_cam.y)
+    gram = Mat2((
+        (ds.dot(ds), ds.dot(dt)),
+        (ds.dot(dt), dt.dot(dt)),
+    ))
+    (lam1, v1), (lam2, _) = gram.eigen()
+    semi_major = m.sqrt(max(0.0, lam1))
+    semi_minor = m.sqrt(max(0.0, lam2))
+    if semi_major < 1e-6:
+        return None
+    angle_deg = m.degrees(m.atan2(v1.y, v1.x))
+    return (u, v, 2.0 * semi_major, 2.0 * semi_minor, angle_deg)
+
+def Oval(
+    cord: Vec3,
+    s: Vec3,
+    t: Vec3,
+    cam_cord: Vec3 | None = None,
+    cam_rotation: Vec3 | None = None,
+    screen_center: tuple[float, float] | None = None,
+    **kwargs,
+) -> c.Oval | None:
+    if cam_cord is None:
+        cam_cord = globals()['cam_cord']
+    if cam_rotation is None:
+        cam_rotation = globals()['cam_rotation']
+    if screen_center is None:
+        screen_center = globals()['screen_center']
+    cord_cam = projectToCamera(cord, cam_cord, cam_rotation)
+    s_cam = _rotateToCam(s, cam_rotation)
+    t_cam = _rotateToCam(t, cam_rotation)
+    params = _oval_params_from_cam(cord_cam, s_cam, t_cam, screen_center)
+    if params is None:
+        return None
+    u, v, w, h, angle_deg = params
+    try:
+        return c.Oval(
+            u, v, w, h,
+            rotateAngle=angle_deg,
+            **kwargs,
+        )
+    except:
+        return None
 
 
 ### MANAGEMENT
@@ -305,17 +521,9 @@ def drawAxis():
     _axis_group.visible = True
 
     for p0_world, p1_world, color in axis_pairs:
-        p0_cam = projectToCamera(p0_world); p1_cam = projectToCamera(p1_world)
-        clipped = _clip_segment_to_near_plane(p0_cam, p1_cam)
-        if clipped is None:
-            continue
-        q0 = projectToScreen(clipped[0]); q1 = projectToScreen(clipped[1])
-        if q0 is None or q1 is None:
-            continue
-        _axis_group.add(
-            c.Line(q0[0], q0[1], q1[0], q1[1],
-                   fill=color, dashes=True, arrowEnd=True, opacity=50)
-        )
+        l = Line(p0_world, p1_world, fill=color, dashes=True, arrowEnd=True, opacity=50)
+        if l is not None:
+            _axis_group.add(l)
     return _axis_group
 
 # Cuboid
@@ -326,7 +534,7 @@ def _cuboid_faces(
     cam_cord: Vec3 | None = None,
     cam_rotation: Vec3 | None = None,
     screen_center: tuple[float, float] | None = None,
-    fill: list[str, str, str, str, str, str] | None = ['lightblue', 'lightblue', 'lightgreen', 'lightgreen', 'lightyellow', 'lightyellow']
+    fill: list[str, str, str, str, str, str] | None = ['lightblue', 'lightblue', 'lightgreen', 'lightgreen', 'lightyellow', 'lightyellow'],
 ) -> list[c.Polygon] | None:
     if cam_cord is None:
         cam_cord = globals()['cam_cord']
@@ -343,72 +551,31 @@ def _cuboid_faces(
         Vec3(-w, -h, -d), Vec3(+w, -h, -d),
         Vec3(+w, +h, -d), Vec3(-w, +h, -d),
         Vec3(-w, -h, +d), Vec3(+w, -h, +d),
-        Vec3(+w, +h, +d), Vec3(-w, +h, +d)
+        Vec3(+w, +h, +d), Vec3(-w, +h, +d),
     ]
     if rotation is not None and rotation != s2v(0):
         verts = rotateVerts(verts, rotation)
     verts = [v + cord for v in verts]
-    
-    camera_verts = [projectToCamera(v, cam_cord, cam_rotation) for v in verts]
-    points = [projectToScreen(v, screen_center) for v in camera_verts]
-    
-    # Ignore vert beyond cam
-    if any(coord is None for coord in points):
-        return None
-    
-    center_cam = projectToCamera(cord, cam_cord, cam_rotation)
-    center_point = projectToScreen(center_cam, screen_center)
-    if center_point is None:
-        return None
-    
-    try:
-        # Front face (vertices 4, 5, 6, 7)
-        front_face = c.Polygon(points[4][0], points[4][1],
-                points[5][0], points[5][1],
-                points[6][0], points[6][1],
-                points[7][0], points[7][1],
-                fill=fill[0], border='black', borderWidth=1, opacity=50)
-        # Back face (vertices 0, 1, 2, 3)
-        back_face = c.Polygon(points[0][0], points[0][1],
-                points[1][0], points[1][1],
-                points[2][0], points[2][1],
-                points[3][0], points[3][1],
-                fill=fill[1], border='black', borderWidth=1, opacity=50)
-        # Top face (vertices 3, 2, 6, 7)
-        top_face = c.Polygon(points[3][0], points[3][1],
-                points[2][0], points[2][1],
-                points[6][0], points[6][1],
-                points[7][0], points[7][1],
-                fill=fill[2], border='black', borderWidth=1, opacity=50)
-        # Bottom face (vertices 0, 1, 5, 4)
-        bottom_face = c.Polygon(points[0][0], points[0][1],
-                points[1][0], points[1][1],
-                points[5][0], points[5][1],
-                points[4][0], points[4][1],
-                fill=fill[3], border='black', borderWidth=1, opacity=50)
-        # Right face (vertices 1, 2, 6, 5)
-        right_face = c.Polygon(points[1][0], points[1][1],
-                points[2][0], points[2][1],
-                points[6][0], points[6][1],
-                points[5][0], points[5][1],
-                fill=fill[4], border='black', borderWidth=1, opacity=50)
-        # Left face (vertices 0, 3, 7, 4)
-        left_face = c.Polygon(points[0][0], points[0][1],
-                points[3][0], points[3][1],
-                points[7][0], points[7][1],
-                points[4][0], points[4][1],
-                fill=fill[5], border='black', borderWidth=1, opacity=50)
-    
-        return [
-            front_face,
-            back_face,
-            top_face,
-            bottom_face,
-            right_face,
-            left_face,
-        ]
-    except: 
-        return None
+
+    face_indices = [
+        [4, 5, 6, 7],  # front
+        [0, 1, 2, 3],  # back
+        [3, 2, 6, 7],  # top
+        [0, 1, 5, 4],  # bottom
+        [1, 2, 6, 5],  # right
+        [0, 3, 7, 4],  # left
+    ]
+    faces = []
+    for idx, fi in enumerate(face_indices):
+        face_verts = [verts[i] for i in fi]
+        poly = Polygon(
+            face_verts, cam_cord, cam_rotation, screen_center,
+            fill=fill[idx], border='black', borderWidth=1, opacity=50,
+        )
+        if poly is None:
+            return None
+        faces.append(poly)
+    return faces
 
 class Cuboid:
     """
@@ -462,7 +629,7 @@ class Cuboid:
             self.rotation,
             self.cam_cord,
             self.cam_rotation,
-            self.screen_center
+            self.screen_center,
         )
         self.group.clear()
         if faces is None:
@@ -578,7 +745,7 @@ class Cube:
             self.rotation,
             self.cam_cord,
             self.cam_rotation,
-            self.screen_center
+            self.screen_center,
         )
         self.group.clear()
         if faces is None:
@@ -645,11 +812,205 @@ class Cube:
         self.rotation = self._initial_rotation
         return self.redraw()
 
+# Sphere
+def _sphere_silhouette(
+    cord_cam: Vec3,
+    radius: float,
+) -> tuple[Vec3, Vec3, Vec3] | None:
+    """Returns (silhouette_center_cam, s_cam, t_cam) in camera space, or None."""
+    d2 = cord_cam.x**2 + cord_cam.y**2 + cord_cam.z**2
+    r2 = radius * radius
+    if d2 <= r2:
+        return None
+    d = m.sqrt(d2)
+    ratio = r2 / d2
+    sil_center = Vec3(
+        cord_cam.x * (1.0 - ratio),
+        cord_cam.y * (1.0 - ratio),
+        cord_cam.z * (1.0 - ratio),
+    )
+    r_s = radius * m.sqrt(d2 - r2) / d
+    nx, ny, nz = cord_cam.x / d, cord_cam.y / d, cord_cam.z / d
+    up = Vec3(1.0, 0.0, 0.0) if abs(nx) < 0.9 else Vec3(0.0, 1.0, 0.0)
+    # t1 = normalize(cross(n, up))
+    t1x = ny * up.z - nz * up.y
+    t1y = nz * up.x - nx * up.z
+    t1z = nx * up.y - ny * up.x
+    t1_len = m.sqrt(t1x*t1x + t1y*t1y + t1z*t1z)
+    if t1_len < 1e-12:
+        return None
+    t1x /= t1_len; t1y /= t1_len; t1z /= t1_len
+    # t2 = cross(n, t1)
+    t2x = ny * t1z - nz * t1y
+    t2y = nz * t1x - nx * t1z
+    t2z = nx * t1y - ny * t1x
+    s_vec = Vec3(t1x * r_s, t1y * r_s, t1z * r_s)
+    t_vec = Vec3(t2x * r_s, t2y * r_s, t2z * r_s)
+    return (sil_center, s_vec, t_vec)
+
+def _sphere_ovals(
+    cord: Vec3, radius: float, rotation: Vec3,
+    cam_cord: Vec3, cam_rotation: Vec3,
+    screen_center: tuple[float, float],
+) -> list | None:
+    ovals = []
+    gc_pairs = [
+        (Vec3(radius, 0, 0), Vec3(0, radius, 0), 'blue'),   # XY plane (normal Z)
+        (Vec3(radius, 0, 0), Vec3(0, 0, radius), 'green'),  # XZ plane (normal Y)
+        (Vec3(0, radius, 0), Vec3(0, 0, radius), 'red'),    # YZ plane (normal X)
+    ]
+    for s_local, t_local, color in gc_pairs:
+        if rotation != s2v(0):
+            s_rot, t_rot = rotateVerts([s_local, t_local], rotation)
+        else:
+            s_rot, t_rot = s_local, t_local
+        oval = Oval(
+            cord, s_rot, t_rot,
+            cam_cord, cam_rotation, screen_center,
+            fill=None, border=color, borderWidth=1, opacity=50,
+        )
+        if oval is not None:
+            ovals.append(oval)
+    # Silhouette
+    cord_cam = projectToCamera(cord, cam_cord, cam_rotation)
+    sil = _sphere_silhouette(cord_cam, radius)
+    if sil is not None:
+        sil_center, sil_s, sil_t = sil
+        params = _oval_params_from_cam(sil_center, sil_s, sil_t, screen_center)
+        if params is not None:
+            u, v, w, h, angle_deg = params
+            try:
+                sil_oval = c.Oval(
+                    u, v, w, h,
+                    rotateAngle=angle_deg,
+                    fill='lightBlue', border='black',
+                    borderWidth=1, opacity=30,
+                )
+                ovals.insert(0, sil_oval)
+            except:
+                pass
+    return ovals if ovals else None
+
+class Sphere:
+    """
+    WORLD (x, y, z)
+
+    - redraw
+    - TRANSLATION
+        - move (delta: Vec3)
+        - set_cord (cord: Vec3)
+        - reset_cord
+    - SCALING
+        - scale (delta: Vec3)
+        - set_size (size: Vec3)
+        - reset_size
+    - ROTATION
+        - rotate (delta: Vec3)
+        - set_rotation (rotation: Vec3)
+        - reset_rotation
+    """
+    def __init__(
+        self,
+        cord: Vec3,
+        size: float,
+        rotation: Vec3 | None = None,
+        cam_cord: Vec3 | None = None,
+        cam_rotation: Vec3 | None = None,
+        screen_center: tuple[float, float] | None = None,
+    ):
+        if cam_cord is None:
+            cam_cord = globals()['cam_cord']
+        if cam_rotation is None:
+            cam_rotation = globals()['cam_rotation']
+        if screen_center is None:
+            screen_center = globals()['screen_center']
+        self.cord = cord
+        self._initial_cord = cord
+        s = _clamp_size(size)
+        self.size = s2v(s)
+        self._initial_size = self.size
+        self.rotation = rotation if rotation is not None else s2v(0)
+        self._initial_rotation = self.rotation
+        self.cam_cord = cam_cord
+        self.cam_rotation = cam_rotation
+        self.screen_center = screen_center
+        self.group = c.Group()
+        self.redraw()
+
+    def redraw(self):
+        ovals = _sphere_ovals(
+            self.cord, self.size.x / 2.0, self.rotation,
+            self.cam_cord, self.cam_rotation, self.screen_center,
+        )
+        self.group.clear()
+        if ovals is None:
+            self.group.visible = False
+            return self.group
+        self.group.visible = True
+        for oval in ovals:
+            self.group.add(oval)
+        return self.group
+
+    # Translation
+    def move(self, delta: Vec3):
+        self.cord = self.cord + delta
+        return self.redraw()
+
+    def set_cord(self, cord: Vec3):
+        self.cord = cord
+        return self.redraw()
+    def reset_cord(self):
+        self.cord = self._initial_cord
+        return self.redraw()
+    
+    # Scale (uniform)
+    def scale(self, delta: Vec3):
+        sigma = delta.x + delta.y + delta.z
+        self.size = _clamp_vec3_size(Vec3(
+            self.size.x + sigma,
+            self.size.y + sigma,
+            self.size.z + sigma,
+        ))
+        return self.redraw()
+        
+    def set_size(self, size: float | Vec3):
+        if isinstance(size, float):
+            s = _clamp_size(size)
+            self.size = s2v(s)
+        else:
+            self.size = _clamp_vec3_size(size)
+        return self.redraw()
+    def reset_size(self):
+        self.size = self._initial_size
+        return self.redraw()
+
+    # Rotation (rad)
+    def rotate(self, delta: Vec3):
+        self.rotation = Vec3(
+            self.rotation.x + delta.x,
+            self.rotation.y + delta.y,
+            self.rotation.z + delta.z,
+        )
+        rx = 0 if abs(self.rotation.x) <= 1e-6 else self.rotation.x
+        ry = 0 if abs(self.rotation.y) <= 1e-6 else self.rotation.y
+        rz = 0 if abs(self.rotation.z) <= 1e-6 else self.rotation.z
+        rx = rx % (2 * m.pi)
+        ry = ry % (2 * m.pi)
+        rz = rz % (2 * m.pi)
+        self.rotation = Vec3(rx, ry, rz)
+        return self.redraw()
+
+    def set_rotation(self, rotation: Vec3):
+        self.rotation = rotation
+        return self.redraw()
+    def reset_rotation(self):
+        self.rotation = self._initial_rotation
+        return self.redraw()
+
 # Ellipsoid
     # c.Arc(x, y, w, h, startAngle, sweepAngle, visible=True)
     # c.Oval(x, y, w, h, rotateAngle=0, align='center', visible=True)
     # c.Circle(x, y, r, rotateAngle=0, visible=True)
-# Sphere
 # Cylinder
 # Cone
 # Pyramid
@@ -1039,12 +1400,14 @@ class SelectedObjectInfo:
 drawAxis()
 depth_layer = DepthLayerManager()
 cuboid1 = Cuboid(s2v(0), s2v(50))
-cube1 = Cube(s2v(0), 75)
+cube1 = Cube(s2v(0), 50)
+sphere1 = Sphere(Vec3(0, 0, 0), 50)
 # cuboid2 = Cuboid(Vec3(0, 0, 200), s2v(50))
 # cuboid_which_is_named_very_long = Cuboid(Vec3(0, 0, 200), s2v(50))
 
 register_object(cuboid1, 'cuboid1')
 register_object(cube1, 'cube1')
+register_object(sphere1, 'sphere1')
 # register_object(cuboid2, 'cuboid2')
 # register_object(cuboid_which_is_named_very_long, 'cuboid_which_is_named_very_long')
 
@@ -1117,46 +1480,56 @@ def onKeyPress(keys, modifiers=None):
     if 'tab' in keys:
         select_next_object()
         selected_object_info.update()
-    
-    if 'backspace' in keys and 'tab' not in keys:   # WHY ALSO REACTS TO TAB? x2
-        clearObject(get_selected_object('name'))
-        select_next_object()
-        selected_object_info.update()
-    
-    if '+' in keys:
-        new_obj = Cuboid(s2v(0), s2v(50))
-        base_name = 'cuboid'
-        index = 1
-        new_name = f'{base_name}{index}'
-        while new_name in _objects:
-            index += 1
+    else:   # WHY ALSO REACTS TO TAB?
+        if 'backspace' in keys:
+            clearObject(get_selected_object('name'))
+            select_next_object()
+            selected_object_info.update()
+        
+        if '+' in keys:
+            new_obj = Cuboid(s2v(0), s2v(50))
+            base_name = 'cuboid'
+            index = 1
             new_name = f'{base_name}{index}'
-        register_object(new_obj, new_name)
-        select_next_object()
-        selected_object_info.update()
-
-    # if '/' in keys:
-    #     command = command_input()
-    
-    if 'g' in keys:
-        global SHOW_AXIS
-        SHOW_AXIS = not SHOW_AXIS
-        drawAxis()
-    
-    if 't' in keys:
-        selected_group = get_selected_object('obj')
-        if selected_group is None:
-            return
-        if hasattr(selected_group, 'reset_cord'):
-            selected_group.reset_cord()
-        if hasattr(selected_group, 'reset_size'):
-            selected_group.reset_size()
-        if hasattr(selected_group, 'reset_rotation'):
-            selected_group.reset_rotation()
-        selected_object_info.update()
-    if 'b' in keys and 'tab' not in keys:   # WHY ALSO REACTS TO TAB?
-        camera.reset()
-        camera_info.update()
+            while new_name in _objects:
+                index += 1
+                new_name = f'{base_name}{index}'
+            register_object(new_obj, new_name)
+            select_next_object()
+            selected_object_info.update()
+        
+        # AXIS
+        if 'g' in keys:
+            global SHOW_AXIS
+            SHOW_AXIS = not SHOW_AXIS
+            drawAxis()
+        
+        # RESET
+        # Object
+        if 't' in keys:
+            selected_group = get_selected_object('obj')
+            if selected_group is None:
+                return
+            if hasattr(selected_group, 'reset_cord'):
+                selected_group.reset_cord()
+            if hasattr(selected_group, 'reset_size'):
+                selected_group.reset_size()
+            selected_object_info.update()
+        if 'T' in keys:
+            selected_group = get_selected_object('obj')
+            if selected_group is None:
+                return
+            if hasattr(selected_group, 'reset_rotation'):
+                selected_group.reset_rotation()
+            selected_object_info.update()
+        
+        # Camera
+        if 'b' in keys:
+            camera.reset_cord()
+            camera_info.update()
+        if 'B' in keys:
+            camera.reset_rotation()
+            camera_info.update()
 
 def onKeyRelease(keys=None, modifiers=None):
     input_info.set_keyboard(None, None)

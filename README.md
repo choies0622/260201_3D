@@ -11,10 +11,12 @@ Proj. Started On `Feb 1, 2026`.
 + [x] Movable Cam
 + [x] Depth & Layer
 + [ ] ~~Intuitive Cam Move~~
-+ [ ] Additional Shapes
++ [x] Additional Shapes
+    + [x] Sphere
+    + [ ] *(Optional)* *Something else...*
 + [ ] Add More Arguments
-+ [ ] *(Optional)* Make It a **Library**
-+ [ ] *(Optional)* Try To Make It Using **Quaternion**
++ [ ] *(Optional)* Make It as a **Library**
++ [ ] *(Optional)* Try To Make Samething Using **Quaternion**
 
 
 ## About CMU Graphics Library
