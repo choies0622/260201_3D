@@ -1057,9 +1057,284 @@ class Sphere:
         return self.redraw()
 
 # Ellipsoid
-    # c.Arc(x, y, w, h, startAngle, sweepAngle, visible=True)
-    # c.Oval(x, y, w, h, rotateAngle=0, align='center', visible=True)
-    # c.Circle(x, y, r, rotateAngle=0, visible=True)
+def _ellipsoid_silhouette(
+    cord_cam: Vec3,
+    axes_cam: list,
+) -> tuple[Vec3, Vec3, Vec3] | None:
+    """Returns (silhouette_center_cam, s_cam, t_cam) in camera space, or None.
+    axes_cam: 3 semi-axis vectors of the ellipsoid in camera space."""
+    a1, a2, a3 = axes_cam
+
+    # Gram matrix G = S S^T  (S has columns = semi-axis vectors)
+    g00 = a1.x*a1.x + a2.x*a2.x + a3.x*a3.x
+    g01 = a1.x*a1.y + a2.x*a2.y + a3.x*a3.y
+    g02 = a1.x*a1.z + a2.x*a2.z + a3.x*a3.z
+    g11 = a1.y*a1.y + a2.y*a2.y + a3.y*a3.y
+    g12 = a1.y*a1.z + a2.y*a2.z + a3.y*a3.z
+    g22 = a1.z*a1.z + a2.z*a2.z + a3.z*a3.z
+
+    # G^{-1} via cofactors (G is symmetric)
+    c00 = g11*g22 - g12*g12
+    c01 = -(g01*g22 - g12*g02)
+    c02 = g01*g12 - g11*g02
+    c11 = g00*g22 - g02*g02
+    c12 = -(g00*g12 - g01*g02)
+    c22 = g00*g11 - g01*g01
+
+    det_g = g00*c00 + g01*c01 + g02*c02
+    if abs(det_g) < 1e-20:
+        return None
+    inv_det = 1.0 / det_g
+
+    qi00 = c00 * inv_det
+    qi01 = c01 * inv_det
+    qi02 = c02 * inv_det
+    qi11 = c11 * inv_det
+    qi12 = c12 * inv_det
+    qi22 = c22 * inv_det
+
+    # v = Q @ c_cam  (Q = G^{-1})
+    cx, cy, cz = cord_cam.x, cord_cam.y, cord_cam.z
+    vx = qi00*cx + qi01*cy + qi02*cz
+    vy = qi01*cx + qi11*cy + qi12*cz
+    vz = qi02*cx + qi12*cy + qi22*cz
+
+    # alpha = c_cam^T Q c_cam
+    alpha = cx*vx + cy*vy + cz*vz
+    if alpha <= 1.0:
+        return None
+
+    # Silhouette center: c_cam * (alpha - 1) / alpha
+    ratio = (alpha - 1.0) / alpha
+    sil_center = Vec3(cx * ratio, cy * ratio, cz * ratio)
+
+    # Normal of silhouette plane: n = normalize(v)
+    n_len = m.sqrt(vx*vx + vy*vy + vz*vz)
+    if n_len < 1e-12:
+        return None
+    nx, ny, nz = vx/n_len, vy/n_len, vz/n_len
+
+    # Orthonormal basis {e1, e2} perpendicular to n
+    up = Vec3(1.0, 0.0, 0.0) if abs(nx) < 0.9 else Vec3(0.0, 1.0, 0.0)
+    e1x = ny * up.z - nz * up.y
+    e1y = nz * up.x - nx * up.z
+    e1z = nx * up.y - ny * up.x
+    e1_len = m.sqrt(e1x*e1x + e1y*e1y + e1z*e1z)
+    if e1_len < 1e-12:
+        return None
+    e1x /= e1_len; e1y /= e1_len; e1z /= e1_len
+    e2x = ny * e1z - nz * e1y
+    e2y = nz * e1x - nx * e1z
+    e2z = nx * e1y - ny * e1x
+
+    # Q e1, Q e2
+    qe1x = qi00*e1x + qi01*e1y + qi02*e1z
+    qe1y = qi01*e1x + qi11*e1y + qi12*e1z
+    qe1z = qi02*e1x + qi12*e1y + qi22*e1z
+    qe2x = qi00*e2x + qi01*e2y + qi02*e2z
+    qe2y = qi01*e2x + qi11*e2y + qi12*e2z
+    qe2z = qi02*e2x + qi12*e2y + qi22*e2z
+
+    # 2D quadric M = [[e1·Qe1, e1·Qe2], [e1·Qe2, e2·Qe2]]
+    m00 = e1x*qe1x + e1y*qe1y + e1z*qe1z
+    m01 = e1x*qe2x + e1y*qe2y + e1z*qe2z
+    m11 = e2x*qe2x + e2y*qe2y + e2z*qe2z
+
+    tr2 = m00 + m11
+    det2 = m00 * m11 - m01 * m01
+    disc2 = m.sqrt(max(0.0, tr2*tr2 - 4.0*det2))
+    mu1 = (tr2 + disc2) / 2.0
+    mu2 = (tr2 - disc2) / 2.0
+
+    if mu1 < 1e-12 or mu2 < 1e-12:
+        return None
+
+    sf = (alpha - 1.0) / alpha
+    a_sil = m.sqrt(sf / mu1)
+    b_sil = m.sqrt(sf / mu2)
+
+    # Eigenvector for mu1
+    if abs(m01) > 1e-12:
+        evs, evt = mu1 - m11, m01
+    elif abs(m00 - m11) > 1e-12:
+        evs = 1.0 if m00 >= m11 else 0.0
+        evt = 0.0 if m00 >= m11 else 1.0
+    else:
+        evs, evt = 1.0, 0.0
+    ev_len = m.sqrt(evs*evs + evt*evt)
+    if ev_len > 1e-12:
+        evs /= ev_len; evt /= ev_len
+
+    s_vec = Vec3(
+        a_sil * (evs * e1x + evt * e2x),
+        a_sil * (evs * e1y + evt * e2y),
+        a_sil * (evs * e1z + evt * e2z),
+    )
+    t_vec = Vec3(
+        b_sil * (-evt * e1x + evs * e2x),
+        b_sil * (-evt * e1y + evs * e2y),
+        b_sil * (-evt * e1z + evs * e2z),
+    )
+    return (sil_center, s_vec, t_vec)
+
+def _ellipsoid_ovals(
+    cord: Vec3, size: Vec3, rotation: Vec3,
+    cam_cord: Vec3, cam_rotation: Vec3,
+    screen_center: tuple[float, float],
+) -> list | None:
+    hx, hy, hz = size.x / 2.0, size.y / 2.0, size.z / 2.0
+    ovals = []
+    cs_pairs = [
+        (Vec3(hx, 0, 0), Vec3(0, hy, 0), 'blue'),   # XY plane (normal Z)
+        (Vec3(hx, 0, 0), Vec3(0, 0, hz), 'green'),  # XZ plane (normal Y)
+        (Vec3(0, hy, 0), Vec3(0, 0, hz), 'red'),    # YZ plane (normal X)
+    ]
+    for s_local, t_local, color in cs_pairs:
+        if rotation != s2v(0):
+            s_rot, t_rot = rotateVerts([s_local, t_local], rotation)
+        else:
+            s_rot, t_rot = s_local, t_local
+        oval = Oval(
+            cord, s_rot, t_rot,
+            cam_cord, cam_rotation, screen_center,
+            fill=None, border=color, borderWidth=1, opacity=50,
+        )
+        if oval is not None:
+            ovals.append(oval)
+    # Silhouette
+    cord_cam = projectToCamera(cord, cam_cord, cam_rotation)
+    local_axes = [Vec3(hx, 0, 0), Vec3(0, hy, 0), Vec3(0, 0, hz)]
+    if rotation != s2v(0):
+        local_axes = rotateVerts(local_axes, rotation)
+    axes_cam = [_rotateToCam(ax, cam_rotation) for ax in local_axes]
+    sil = _ellipsoid_silhouette(cord_cam, axes_cam)
+    if sil is not None:
+        sil_center, sil_s, sil_t = sil
+        params = _oval_params_from_cam(sil_center, sil_s, sil_t, screen_center)
+        if params is not None:
+            u, v, w, h, angle_deg = params
+            try:
+                sil_oval = c.Oval(
+                    u, v, w, h,
+                    rotateAngle=angle_deg,
+                    fill='lightCyan', border='black',
+                    borderWidth=1, opacity=30,
+                )
+                ovals.insert(0, sil_oval)
+            except:
+                pass
+    return ovals if ovals else None
+
+class Ellipsoid:
+    """
+    WORLD (x, y, z)
+
+    - redraw
+    - TRANSLATION
+        - move (delta: Vec3)
+        - set_cord (cord: Vec3)
+        - reset_cord
+    - SCALING
+        - scale (delta: Vec3)
+        - set_size (size: Vec3)
+        - reset_size
+    - ROTATION
+        - rotate (delta: Vec3)
+        - set_rotation (rotation: Vec3)
+        - reset_rotation
+    """
+    def __init__(
+        self,
+        cord: Vec3,
+        size: Vec3,
+        rotation: Vec3 | None = None,
+        cam_cord: Vec3 | None = None,
+        cam_rotation: Vec3 | None = None,
+        screen_center: tuple[float, float] | None = None,
+    ):
+        if cam_cord is None:
+            cam_cord = globals()['cam_cord']
+        if cam_rotation is None:
+            cam_rotation = globals()['cam_rotation']
+        if screen_center is None:
+            screen_center = globals()['screen_center']
+        self.cord = cord
+        self._initial_cord = cord
+        self.size = _clamp_vec3_size(size)
+        self._initial_size = self.size
+        self.rotation = rotation if rotation is not None else s2v(0)
+        self._initial_rotation = self.rotation
+        self.cam_cord = cam_cord
+        self.cam_rotation = cam_rotation
+        self.screen_center = screen_center
+        self.group = c.Group()
+        self.redraw()
+
+    def redraw(self):
+        ovals = _ellipsoid_ovals(
+            self.cord, self.size, self.rotation,
+            self.cam_cord, self.cam_rotation, self.screen_center,
+        )
+        self.group.clear()
+        if ovals is None:
+            self.group.visible = False
+            return self.group
+        self.group.visible = True
+        for oval in ovals:
+            self.group.add(oval)
+        return self.group
+
+    # Translation
+    def move(self, delta: Vec3):
+        self.cord = self.cord + delta
+        return self.redraw()
+
+    def set_cord(self, cord: Vec3):
+        self.cord = cord
+        return self.redraw()
+    def reset_cord(self):
+        self.cord = self._initial_cord
+        return self.redraw()
+    
+    # Scale
+    def scale(self, delta: Vec3):
+        self.size = _clamp_vec3_size(Vec3(
+            self.size.x + delta.x,
+            self.size.y + delta.y,
+            self.size.z + delta.z,
+        ))
+        return self.redraw()
+
+    def set_size(self, size: Vec3):
+        self.size = _clamp_vec3_size(size)
+        return self.redraw()
+    def reset_size(self):
+        self.size = self._initial_size
+        return self.redraw()
+
+    # Rotation (rad)
+    def rotate(self, delta: Vec3):
+        self.rotation = Vec3(
+            self.rotation.x + delta.x,
+            self.rotation.y + delta.y,
+            self.rotation.z + delta.z,
+        )
+        rx = 0 if abs(self.rotation.x) <= 1e-6 else self.rotation.x
+        ry = 0 if abs(self.rotation.y) <= 1e-6 else self.rotation.y
+        rz = 0 if abs(self.rotation.z) <= 1e-6 else self.rotation.z
+        rx = rx % (2 * m.pi)
+        ry = ry % (2 * m.pi)
+        rz = rz % (2 * m.pi)
+        self.rotation = Vec3(rx, ry, rz)
+        return self.redraw()
+
+    def set_rotation(self, rotation: Vec3):
+        self.rotation = rotation
+        return self.redraw()
+    def reset_rotation(self):
+        self.rotation = self._initial_rotation
+        return self.redraw()
+
 # Cylinder
 # Cone
 # Pyramid
@@ -1477,12 +1752,14 @@ depth_layer = DepthLayerManager()
 cuboid1 = Cuboid(s2v(0), s2v(50))
 cube1 = Cube(s2v(0), 50, fill='salmon', border='crimson', opacity=70)
 sphere1 = Sphere(Vec3(0, 0, 0), 50)
+ellipsoid1 = Ellipsoid(s2v(0), Vec3(60, 40, 30))
 # cuboid2 = Cuboid(Vec3(0, 0, 200), s2v(50))
 # cuboid_which_is_named_very_long = Cuboid(Vec3(0, 0, 200), s2v(50))
 
 register_object(cuboid1, 'cuboid1')
 register_object(cube1, 'cube1')
 register_object(sphere1, 'sphere1')
+register_object(ellipsoid1, 'ellipsoid1')
 # register_object(cuboid2, 'cuboid2')
 # register_object(cuboid_which_is_named_very_long, 'cuboid_which_is_named_very_long')
 
