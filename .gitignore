@@ -4,6 +4,7 @@ __pycache__/
 
 # Cursor
 .cursor/
+260201_3d.code-workspace
 
 # Virtual environments
 .venv/
