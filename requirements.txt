@@ -1,0 +1,4 @@
+# CMU Graphics - 3D modeling / graphics framework
+# https://academy.cs.cmu.edu/docs
+# Requires Python 3.11 or 3.12
+cmu-graphics>=1.1.45
